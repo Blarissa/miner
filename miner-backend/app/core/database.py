@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+import sqlite3
+import os
+import re
+from pathlib import Path
+
+from app.core.config import settings
+
+
+def sqlite_path_from_url(value: str) -> Path:
+    if value.startswith("jdbc:sqlite:"):
+        value = value.removeprefix("jdbc:sqlite:")
+    if value.startswith("sqlite:///"):
+        value = value.removeprefix("sqlite:///")
+
+    windows_path = re.match(r"^([A-Za-z]):[\\/](.*)$", value)
+    if windows_path and os.name != "nt":
+        drive, path = windows_path.groups()
+        return Path.home() / ".miner-backend" / drive.lower() / Path(
+            path.replace("\\", "/")
+        )
+
+    return Path(value)
+
+
+DATABASE_PATH = sqlite_path_from_url(settings.database_url)
+SCHEMA_PATH = Path(__file__).with_name("database.sql")
+
+
+MINING_RUN_COLUMN_MIGRATIONS = {
+    "progress_stage": "ALTER TABLE mining_runs ADD COLUMN progress_stage TEXT",
+    "total_candidates": (
+        "ALTER TABLE mining_runs ADD COLUMN total_candidates INTEGER NOT NULL DEFAULT 0"
+    ),
+    "processed_repositories": (
+        "ALTER TABLE mining_runs ADD COLUMN processed_repositories INTEGER NOT NULL DEFAULT 0"
+    ),
+    "accepted_repositories": (
+        "ALTER TABLE mining_runs ADD COLUMN accepted_repositories INTEGER NOT NULL DEFAULT 0"
+    ),
+    "eliminated_repositories": (
+        "ALTER TABLE mining_runs ADD COLUMN eliminated_repositories INTEGER NOT NULL DEFAULT 0"
+    ),
+    "analyze": "ALTER TABLE mining_runs ADD COLUMN analyze INTEGER NOT NULL DEFAULT 0",
+    "allow_jdk_upgrade": (
+        "ALTER TABLE mining_runs ADD COLUMN allow_jdk_upgrade INTEGER NOT NULL DEFAULT 0"
+    ),
+    "provider": "ALTER TABLE mining_runs ADD COLUMN provider TEXT NOT NULL DEFAULT 'github'",
+    "page_cursor": (
+        "ALTER TABLE mining_runs ADD COLUMN page_cursor INTEGER NOT NULL DEFAULT 1"
+    ),
+    "per_page": "ALTER TABLE mining_runs ADD COLUMN per_page INTEGER NOT NULL DEFAULT 100",
+    "last_processed_index": (
+        "ALTER TABLE mining_runs ADD COLUMN last_processed_index INTEGER NOT NULL DEFAULT 0"
+    ),
+    "acceptance_rate": (
+        "ALTER TABLE mining_runs ADD COLUMN acceptance_rate REAL NOT NULL DEFAULT 0.25"
+    ),
+    "batch_size": "ALTER TABLE mining_runs ADD COLUMN batch_size INTEGER",
+    "exhausted": "ALTER TABLE mining_runs ADD COLUMN exhausted INTEGER NOT NULL DEFAULT 0",
+}
+
+
+MINING_RUN_CANDIDATE_COLUMN_MIGRATIONS = {
+    "matched_filter": "ALTER TABLE mining_run_candidates ADD COLUMN matched_filter TEXT",
+    "matched_file": "ALTER TABLE mining_run_candidates ADD COLUMN matched_file TEXT",
+    "metadata_json": "ALTER TABLE mining_run_candidates ADD COLUMN metadata_json TEXT",
+}
+
+
+SEARCH_FILTER_COLUMN_MIGRATIONS = {
+    "content_rules_json": "ALTER TABLE search_filters ADD COLUMN content_rules_json TEXT",
+}
+
+
+ANALYSIS_CACHE_COLUMN_MIGRATIONS = {
+    "allow_jdk_upgrade": (
+        "ALTER TABLE analysis_cache ADD COLUMN allow_jdk_upgrade INTEGER NOT NULL DEFAULT 0"
+    ),
+}
+
+
+def get_connection() -> sqlite3.Connection:
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(DATABASE_PATH)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
+
+def init_database() -> None:
+    schema = SCHEMA_PATH.read_text(encoding="utf-8")
+    with get_connection() as conn:
+        conn.executescript(schema)
+        columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(mining_runs)").fetchall()
+        }
+        for column, statement in MINING_RUN_COLUMN_MIGRATIONS.items():
+            if column not in columns:
+                conn.execute(statement)
+
+        search_filter_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(search_filters)").fetchall()
+        }
+        for column, statement in SEARCH_FILTER_COLUMN_MIGRATIONS.items():
+            if column not in search_filter_columns:
+                conn.execute(statement)
+
+        analysis_cache_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(analysis_cache)").fetchall()
+        }
+        for column, statement in ANALYSIS_CACHE_COLUMN_MIGRATIONS.items():
+            if column not in analysis_cache_columns:
+                conn.execute(statement)
+
+        candidate_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(mining_run_candidates)").fetchall()
+        }
+        for column, statement in MINING_RUN_CANDIDATE_COLUMN_MIGRATIONS.items():
+            if column not in candidate_columns:
+                conn.execute(statement)

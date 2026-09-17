@@ -1,0 +1,9 @@
+.env
+*.db
+__pycache__/
+.pytest_cache/
+app/services/repos/
+app/services/logs/
+tmp/
+tests/
+.git/
