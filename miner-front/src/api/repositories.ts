@@ -20,6 +20,12 @@ type RawRepository = Record<string, unknown> & {
     effective_java_version?: string;
     build?: string;
     test_framework?: string;
+    test_frameworks?: string;
+    mock_libraries?: string;
+    assertion_libraries?: string;
+    integration_test_tools?: string;
+    compile_duration_seconds?: number | string | null;
+    test_duration_seconds?: number | string | null;
     compiled?: boolean | number;
     has_tests?: boolean | number;
     tests_passed?: boolean | number;
@@ -66,6 +72,12 @@ async function requestJson<T>(
 
 function stringValue(value: unknown): string {
     return typeof value === "string" ? value : "";
+}
+
+function optionalNumberValue(value: unknown): number | null {
+    if (value === null || value === undefined || value === "") return null;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
 }
 
 function optionalBooleanValue(value: unknown): boolean | null {
@@ -130,6 +142,12 @@ function normalizeRepository(item: RawRepository): AnalyzedRepo {
             "",
         build: stringValue(item.build || metadata.build) || "Maven",
         test_framework: stringValue(item.test_framework || metadata.test_framework),
+        test_frameworks: stringValue(item.test_frameworks || metadata.test_frameworks),
+        mock_libraries: stringValue(item.mock_libraries || metadata.mock_libraries),
+        assertion_libraries: stringValue(item.assertion_libraries || metadata.assertion_libraries),
+        integration_test_tools: stringValue(item.integration_test_tools || metadata.integration_test_tools),
+        compile_duration_seconds: optionalNumberValue(item.compile_duration_seconds ?? metadata.compile_duration_seconds),
+        test_duration_seconds: optionalNumberValue(item.test_duration_seconds ?? metadata.test_duration_seconds),
         analyzed,
         compiled: Boolean(item.compiled),
         has_tests: Boolean(item.has_tests),
@@ -273,15 +291,30 @@ export async function getRunStatistics(
 
 async function waitForRunCompletion(
     runId: number,
+    includeStatistics: boolean,
     onProgress?: (progress: SearchRepositoriesProgress) => void,
 ): Promise<MiningRunStatus> {
+    const emitProgress = async (status: MiningRunStatus) => {
+        if (!onProgress) return;
+        const [repositoriesResponse, statistics] = await Promise.all([
+            getRunRepositories(runId),
+            includeStatistics ? getRunStatistics(runId) : Promise.resolve(undefined),
+        ]);
+        onProgress({
+            run_id: runId,
+            status,
+            repositories: repositoriesResponse.repositories,
+            statistics: statistics ?? undefined,
+        });
+    };
+
     let status = await getRepositoryRun(runId);
-    onProgress?.({ run_id: runId, status });
+    await emitProgress(status);
 
     while (!isTerminalRunStatus(status.status)) {
         await sleep(POLL_INTERVAL_MS);
         status = await getRepositoryRun(runId);
-        onProgress?.({ run_id: runId, status });
+        await emitProgress(status);
     }
 
     return status;
@@ -331,11 +364,14 @@ export async function resumeRepositoryRun(
     runId: number,
     onProgress?: (progress: SearchRepositoriesProgress) => void,
 ): Promise<SearchRepositoriesResult> {
-    await requestJson(`/repositories/runs/${runId}/resume`, {
-        method: "POST",
-    });
+    await requestJson(`/repositories/runs/${runId}/resume`, { method: "POST" });
 
-    const status = await waitForRunCompletion(runId, onProgress);
+    const currentStatus = await getRepositoryRun(runId);
+    const status = await waitForRunCompletion(
+        runId,
+        Boolean(currentStatus.include_statistics),
+        onProgress,
+    );
     assertSuccessfulRun(status, runId);
 
     return fetchRunResult(runId, status, Boolean(status.include_statistics));
@@ -354,20 +390,22 @@ export async function searchRepositories(
 ): Promise<SearchRepositoriesResult> {
     const started = await startRepositorySearch(formData);
     const runId = started.run_id;
-    const status = await waitForRunCompletion(runId, onProgress);
+    const status = await waitForRunCompletion(
+        runId, formData.include_statistics, onProgress);
     assertSuccessfulRun(status, runId);
-    const result = await fetchRunResult(runId, status, formData.include_statistics);
+    const result = await fetchRunResult(
+        runId, status, formData.include_statistics);
 
-    const repositories = result.repositories.filter((repo) =>
-        matchesRequestedRequirements(repo, formData)
+    const repositories = result.repositories.filter(
+        (repo) => matchesRequestedRequirements(repo, formData)
     );
 
-    return {
-        run_id: runId,
-        status,
-        total: result.total ?? repositories.length,
-        repositories,
-        statistics: result.statistics,
+    return { 
+        run_id: runId, 
+        status, 
+        total: result.total ?? repositories.length, 
+        repositories, 
+        statistics: result.statistics 
     };
 }
 

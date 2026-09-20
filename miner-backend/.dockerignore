@@ -1,7 +1,12 @@
 .env
 *.db
+.venv/
+venv/
+env/
 __pycache__/
+*.py[cod]
 .pytest_cache/
+.tmp-tests/
 app/services/repos/
 app/services/logs/
 tmp/

@@ -23,7 +23,7 @@ from app.services.miner import (
     pom_indicates_spring,
     safe_get,
 )
-from app.services.analyzer import detect_test_framework_from_pom, resolve_jdk, scan_project_structure
+from app.services.analyzer import detect_test_dependencies_from_pom, detect_test_framework_from_pom, resolve_jdk, scan_project_structure
 from app.schemas.repositories import RepoCandidate
 from app.services.persistence import (
     cancel_mining_run,
@@ -41,6 +41,7 @@ from app.services.mining_runner import (
     should_stop_unproductive_search,
     unproductive_rejection_limit,
 )
+from app.services.statistics import build_statistics
 
 
 class PipelineControlsTest(unittest.TestCase):
@@ -97,6 +98,108 @@ class PipelineControlsTest(unittest.TestCase):
         self.assertEqual(filters[1].language, "Java")
         self.assertEqual(filters[0].stars, ">=100")
         self.assertEqual(filters[1].stars, ">=100")
+
+    def test_statistics_separates_declared_and_effective_java_versions(self) -> None:
+        statistics = build_statistics(
+            [
+                {
+                    "java_version": "8",
+                    "effective_java_version": "11",
+                    "compiled": True,
+                    "has_tests": True,
+                    "tests_passed": True,
+                    "eliminated": False,
+                    "test_frameworks": "JUnit 5, TestNG",
+                    "mock_libraries": "Mockito",
+                    "assertion_libraries": "AssertJ",
+                    "integration_test_tools": "Testcontainers",
+                    "test_duration_seconds": 12.5,
+                },
+                {
+                    "java_version": "17",
+                    "effective_java_version": "17",
+                    "compiled": True,
+                    "has_tests": True,
+                    "tests_passed": True,
+                    "eliminated": False,
+                    "test_frameworks": "JUnit 5",
+                    "mock_libraries": "",
+                    "assertion_libraries": "Hamcrest",
+                    "integration_test_tools": "",
+                    "compile_duration_seconds": 4.0,
+                },
+            ],
+            "accepted",
+        )
+
+        self.assertEqual(
+            statistics["declared_java_versions"],
+            [
+                {"value": "8", "count": 1, "percentage": 50.0},
+                {"value": "17", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["effective_java_versions"],
+            [
+                {"value": "11", "count": 1, "percentage": 50.0},
+                {"value": "17", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["java_declared_effective_comparison"],
+            [
+                {"value": "Versao ajustada", "count": 1, "percentage": 50.0},
+                {"value": "Mesma versao", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["test_frameworks"],
+            [
+                {"value": "JUnit 5", "count": 2, "percentage": 100.0},
+                {"value": "TestNG", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["mock_libraries"],
+            [
+                {"value": "Mockito", "count": 1, "percentage": 50.0},
+                {"value": "unknown", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["assertion_libraries"],
+            [
+                {"value": "AssertJ", "count": 1, "percentage": 50.0},
+                {"value": "Hamcrest", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["integration_test_tools"],
+            [
+                {"value": "Testcontainers", "count": 1, "percentage": 50.0},
+                {"value": "unknown", "count": 1, "percentage": 50.0},
+            ],
+        )
+        self.assertEqual(
+            statistics["stage_durations"],
+            {
+                "compilation": {
+                    "count": 1,
+                    "total_seconds": 4.0,
+                    "average_seconds": 4.0,
+                    "min_seconds": 4.0,
+                    "max_seconds": 4.0,
+                },
+                "testing": {
+                    "count": 1,
+                    "total_seconds": 12.5,
+                    "average_seconds": 12.5,
+                    "min_seconds": 12.5,
+                    "max_seconds": 12.5,
+                },
+            },
+        )
 
     def test_code_search_repository_metadata_filter(self) -> None:
         search_filter = GitHubSearchFilter(
@@ -454,7 +557,13 @@ class PipelineControlsTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            self.assertEqual(detect_test_framework_from_pom(pom), "Mockito, TestNG, JUnit")
+            dependencies = detect_test_dependencies_from_pom(pom)
+
+            self.assertEqual(detect_test_framework_from_pom(pom), "JUnit 5, TestNG")
+            self.assertEqual(dependencies["test_frameworks"], "JUnit 5, TestNG")
+            self.assertEqual(dependencies["mock_libraries"], "Mockito")
+            self.assertEqual(dependencies["assertion_libraries"], "")
+            self.assertEqual(dependencies["integration_test_tools"], "")
 
     def test_unknown_test_framework_returns_empty_text(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:

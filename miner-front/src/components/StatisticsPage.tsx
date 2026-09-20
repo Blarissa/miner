@@ -8,7 +8,7 @@ import {
     XCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import type { CountPercentageStat, RateStat, RepositoryStatistics } from "../models/types";
+import type { CountPercentageStat, DurationStat, RateStat, RepositoryStatistics } from "../models/types";
 
 interface StatisticsPageProps {
     statistics: RepositoryStatistics | null;
@@ -107,6 +107,37 @@ function RateList({ items, emptyText }: { items: RateStat[]; emptyText: string }
     );
 }
 
+function secondsLabel(value: number) {
+    return `${value.toFixed(2)}s`;
+}
+
+function DurationSummary({
+    title,
+    duration,
+}: {
+    title: string;
+    duration?: DurationStat;
+}) {
+    if (!duration || duration.count === 0) {
+        return <p className="text-sm text-zinc-500">Sem tempos registrados.</p>;
+    }
+
+    return (
+        <div className="bg-zinc-900/60 border border-zinc-700/60 rounded-lg p-4">
+            <span className="text-xs text-zinc-400">{title}</span>
+            <p className="text-xl font-bold text-zinc-100 mt-1">
+                {secondsLabel(duration.average_seconds)}
+            </p>
+            <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-zinc-400">
+                <span>Total: {secondsLabel(duration.total_seconds)}</span>
+                <span>Execuções: {duration.count}</span>
+                <span>Mín: {secondsLabel(duration.min_seconds)}</span>
+                <span>Máx: {secondsLabel(duration.max_seconds)}</span>
+            </div>
+        </div>
+    );
+}
+
 function Panel({
     title,
     icon,
@@ -146,6 +177,14 @@ export default function StatisticsPage({
 
     const funnel = statistics.analysis_funnel;
     const summary = statistics.summary;
+    const declaredJavaVersions = statistics.declared_java_versions ?? statistics.java_versions;
+    const effectiveJavaVersions = statistics.effective_java_versions ?? statistics.java_versions;
+    const javaVersionComparison = statistics.java_declared_effective_comparison ?? [];
+    const testFrameworks = statistics.test_frameworks ?? [];
+    const mockLibraries = statistics.mock_libraries ?? [];
+    const assertionLibraries = statistics.assertion_libraries ?? [];
+    const integrationTestTools = statistics.integration_test_tools ?? [];
+    const stageDurations = statistics.stage_durations;
 
     const funnelItems = [
         ["Pesquisados", funnel.searched],
@@ -211,8 +250,39 @@ export default function StatisticsPage({
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <Panel title="Versões Java" icon={<Code2 className="h-4 w-4 text-indigo-400" />}>
-                        <CountList items={statistics.java_versions} emptyText="Sem versões Java no escopo." />
+                    <Panel title="Java declarado" icon={<Code2 className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={declaredJavaVersions} emptyText="Sem versões Java declaradas no escopo." />
+                    </Panel>
+
+                    <Panel title="Java efetivo" icon={<GitBranch className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={effectiveJavaVersions} emptyText="Sem versões Java efetivas no escopo." />
+                    </Panel>
+
+                    <Panel title="Java declarado x efetivo" icon={<BarChart3 className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={javaVersionComparison} emptyText="Sem comparação de versões no escopo." />
+                    </Panel>
+
+                    <Panel title="Frameworks de teste" icon={<TestTube2 className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={testFrameworks} emptyText="Sem frameworks de teste no escopo." />
+                    </Panel>
+
+                    <Panel title="Bibliotecas de mock" icon={<Code2 className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={mockLibraries} emptyText="Sem bibliotecas de mock no escopo." />
+                    </Panel>
+
+                    <Panel title="Bibliotecas de asserção" icon={<CheckCircle2 className="h-4 w-4 text-emerald-400" />}>
+                        <CountList items={assertionLibraries} emptyText="Sem bibliotecas de asserção no escopo." />
+                    </Panel>
+
+                    <Panel title="Ferramentas de teste de integração" icon={<Layers3 className="h-4 w-4 text-indigo-400" />}>
+                        <CountList items={integrationTestTools} emptyText="Sem ferramentas de integração no escopo." />
+                    </Panel>
+
+                    <Panel title="Tempo por etapa" icon={<GitBranch className="h-4 w-4 text-amber-400" />}>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <DurationSummary title="Compilação média" duration={stageDurations?.compilation} />
+                            <DurationSummary title="Testagem média" duration={stageDurations?.testing} />
+                        </div>
                     </Panel>
 
                     {showEliminatedRepositoryStats && (

@@ -74,10 +74,26 @@ SEARCH_FILTER_COLUMN_MIGRATIONS = {
 }
 
 
+ANALYSIS_RESULT_COLUMN_MIGRATIONS = {
+    "test_frameworks": "ALTER TABLE analysis_results ADD COLUMN test_frameworks TEXT",
+    "mock_libraries": "ALTER TABLE analysis_results ADD COLUMN mock_libraries TEXT",
+    "assertion_libraries": "ALTER TABLE analysis_results ADD COLUMN assertion_libraries TEXT",
+    "integration_test_tools": "ALTER TABLE analysis_results ADD COLUMN integration_test_tools TEXT",
+    "compile_duration_seconds": "ALTER TABLE analysis_results ADD COLUMN compile_duration_seconds REAL",
+    "test_duration_seconds": "ALTER TABLE analysis_results ADD COLUMN test_duration_seconds REAL",
+}
+
+
 ANALYSIS_CACHE_COLUMN_MIGRATIONS = {
     "allow_jdk_upgrade": (
         "ALTER TABLE analysis_cache ADD COLUMN allow_jdk_upgrade INTEGER NOT NULL DEFAULT 0"
     ),
+    "test_frameworks": "ALTER TABLE analysis_cache ADD COLUMN test_frameworks TEXT",
+    "mock_libraries": "ALTER TABLE analysis_cache ADD COLUMN mock_libraries TEXT",
+    "assertion_libraries": "ALTER TABLE analysis_cache ADD COLUMN assertion_libraries TEXT",
+    "integration_test_tools": "ALTER TABLE analysis_cache ADD COLUMN integration_test_tools TEXT",
+    "compile_duration_seconds": "ALTER TABLE analysis_cache ADD COLUMN compile_duration_seconds REAL",
+    "test_duration_seconds": "ALTER TABLE analysis_cache ADD COLUMN test_duration_seconds REAL",
 }
 
 
@@ -110,6 +126,14 @@ def init_database() -> None:
         }
         for column, statement in SEARCH_FILTER_COLUMN_MIGRATIONS.items():
             if column not in search_filter_columns:
+                conn.execute(statement)
+
+        analysis_result_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(analysis_results)").fetchall()
+        }
+        for column, statement in ANALYSIS_RESULT_COLUMN_MIGRATIONS.items():
+            if column not in analysis_result_columns:
                 conn.execute(statement)
 
         analysis_cache_columns = {

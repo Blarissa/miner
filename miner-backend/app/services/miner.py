@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import OrderedDict
 
 import base64
 import logging
@@ -19,9 +20,10 @@ import requests
 from app.services.filters import ContentRule, GitHubSearchFilter, GitHubSearchType
 from app.schemas.repository_models import MinedRepo, RepoCandidate, mined_repo_from_candidate
 
+_ETAG_CACHE_MAX_ENTRIES = 2000
 log = logging.getLogger(__name__)
 _worker_state = threading.local()
-_etag_cache: dict[str, tuple[str, requests.Response]] = {}
+_etag_cache: "OrderedDict[str, tuple[str, requests.Response]]" = OrderedDict()
 _etag_lock = threading.Lock()
 
 HTTP_MAX_ATTEMPTS = 4
@@ -182,8 +184,8 @@ def safe_get(
             headers: dict[str, str] = {}
             with _etag_lock:
                 cached = _etag_cache.get(cache_key)
-            if cached is not None:
-                headers["If-None-Match"] = cached[0]
+                if cached is not None:
+                    _etag_cache.move_to_end(cache_key)
 
             resp = session.get(
                 url,
@@ -252,6 +254,9 @@ def store_response_cache(cache_key: str, resp: requests.Response) -> None:
 
     with _etag_lock:
         _etag_cache[cache_key] = (etag, resp)
+        _etag_cache.move_to_end(cache_key)
+        while len(_etag_cache) > _ETAG_CACHE_MAX_ENTRIES:
+            _etag_cache.popitem(last=False)
 
 
 def sleep_with_backoff(attempt: int) -> None:
@@ -470,8 +475,7 @@ def search_filter_candidates(
 
     while len(candidates) < max_items:
         resp = safe_get(
-            session,
-            url,
+            session, url,
             params=search_params(search_filter, page, per_page),
             delay=delay,
         )
@@ -485,6 +489,10 @@ def search_filter_candidates(
 
         for item in items:
             candidate = candidate_from_search_item(item, search_filter)
+
+            if not is_usable_candidate(candidate):
+                continue
+
             candidate = enrich_candidate_metadata(session, candidate, search_filter, delay)
             if is_usable_candidate(candidate) and candidate_matches_metadata_filter(candidate, search_filter):
                 candidates.append(candidate)
@@ -495,10 +503,7 @@ def search_filter_candidates(
         total = data.get("total_count", 0)
         log.info(
             "Pagina %s | itens: %s | candidatos acumulados: %s / %s",
-            page,
-            len(items),
-            len(candidates),
-            total,
+            page, len(items), len(candidates), total,
         )
 
         if page * per_page >= min(total, GITHUB_SEARCH_RESULT_LIMIT):
@@ -506,7 +511,6 @@ def search_filter_candidates(
 
         page += 1
     return candidates
-
 
 def search_filter_candidates_page(
     session: requests.Session,
@@ -541,6 +545,8 @@ def search_filter_candidates_page(
 
     for item in items:
         candidate = candidate_from_search_item(item, search_filter)
+        if not is_usable_candidate(candidate):
+            continue
         candidate = enrich_candidate_metadata(session, candidate, search_filter, delay)
         if is_usable_candidate(candidate) and candidate_matches_metadata_filter(candidate, search_filter):
             candidates.append(candidate)
@@ -1014,6 +1020,12 @@ def mined_repo_to_analyzer_entry(
         "allow_jdk_upgrade": allow_jdk_upgrade,
         "build": metadata.get("build", "Maven"),
         "test_framework": metadata.get("test_framework", ""),
+        "test_frameworks": metadata.get("test_frameworks", ""),
+        "mock_libraries": metadata.get("mock_libraries", ""),
+        "assertion_libraries": metadata.get("assertion_libraries", ""),
+        "integration_test_tools": metadata.get("integration_test_tools", ""),
+        "compile_duration_seconds": metadata.get("compile_duration_seconds"),
+        "test_duration_seconds": metadata.get("test_duration_seconds"),
         "commit_sha": repo.commit_sha or metadata.get("commit_sha"),
     }
 
@@ -1027,6 +1039,12 @@ def analysis_error_entry(entry: dict[str, Any], exc: Exception) -> dict[str, Any
         "effective_java_version": entry.get("java_version", ""),
         "build": entry.get("build", "Maven"),
         "test_framework": entry.get("test_framework", ""),
+        "test_frameworks": entry.get("test_frameworks", ""),
+        "mock_libraries": entry.get("mock_libraries", ""),
+        "assertion_libraries": entry.get("assertion_libraries", ""),
+        "integration_test_tools": entry.get("integration_test_tools", ""),
+        "compile_duration_seconds": entry.get("compile_duration_seconds"),
+        "test_duration_seconds": entry.get("test_duration_seconds"),
         "compiled": False,
         "has_tests": False,
         "tests_passed": False,
@@ -1035,41 +1053,65 @@ def analysis_error_entry(entry: dict[str, Any], exc: Exception) -> dict[str, Any
         "error_message": str(exc),
     }
 
-
 def cached_analysis_for_mined_repo(
     repo: MinedRepo,
     run_test_suite: bool,
     allow_jdk_upgrade: bool = False,
 ) -> dict[str, Any] | None:
-    from app.services.persistence import get_analysis_cache, get_latest_analysis_cache
-
-    commit_sha = str(repo.commit_sha or repo.metadata.get("commit_sha") or "").strip()
-    cached_result = get_analysis_cache(
-        repo.repo_name,
-        commit_sha,
-        run_test_suite,
-        allow_jdk_upgrade,
+    from app.services.persistence import (
+        get_analysis_cache,
+        get_latest_analysis_cache,
+        invalidate_outdated_analysis_cache,
     )
-    cache_log_context = f"commit={commit_sha}" if commit_sha else "ultimo_resultado"
-    if cached_result is None:
-        cached_result = get_latest_analysis_cache(
+ 
+    commit_sha = str(repo.commit_sha or repo.metadata.get("commit_sha") or "").strip()
+ 
+    if commit_sha:
+        cached_result = get_analysis_cache(
             repo.repo_name,
+            commit_sha,
             run_test_suite,
             allow_jdk_upgrade,
         )
-        cache_log_context = "ultimo_resultado"
+        if cached_result is not None:
+            cached_result["name"] = repo.repo_name
+            cached_result["repository_url"] = repo.repo_url
+            cached_result["repo_name"] = repo.repo_name
+            cached_result["repo_url"] = repo.repo_url
+            cached_result["matched_filter"] = repo.matched_filter
+            cached_result["metadata"] = repo.metadata
+            log.info("Cache hit do analyzer | %s | commit=%s", repo.repo_name, commit_sha)
+            return cached_result
+ 
+        removed = invalidate_outdated_analysis_cache(repo.repo_name, commit_sha)
+        if removed:
+            log.info(
+                "Cache invalidado | %s | %s registro(s) de commit(s) antigo(s) removido(s) (commit atual=%s).",
+                repo.repo_name,
+                removed,
+                commit_sha,
+            )
+        return None
+ 
+    cached_result = get_latest_analysis_cache(
+        repo.repo_name,
+        run_test_suite,
+        allow_jdk_upgrade,
+    )
     if cached_result is None:
         return None
-
+ 
     cached_result["name"] = repo.repo_name
     cached_result["repository_url"] = repo.repo_url
     cached_result["repo_name"] = repo.repo_name
     cached_result["repo_url"] = repo.repo_url
     cached_result["matched_filter"] = repo.matched_filter
     cached_result["metadata"] = repo.metadata
-    log.info("Cache hit do analyzer | %s | %s", repo.repo_name, cache_log_context)
+    log.warning(
+        "Cache hit do analyzer sem commit conhecido | %s | usando ultimo resultado salvo (pode estar desatualizado).",
+        repo.repo_name,
+    )
     return cached_result
-
 
 def analyze_mined_repositories(
     repositories: list[MinedRepo],

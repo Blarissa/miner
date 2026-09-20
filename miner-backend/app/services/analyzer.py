@@ -128,7 +128,13 @@ class ProjectResult:
     effective_java_version: str  # versão realmente usada, igual à selecionada/detectada
     build: str
     test_framework: str
+    test_frameworks: str = ""
+    mock_libraries: str = ""
+    assertion_libraries: str = ""
+    integration_test_tools: str = ""
     commit_sha: str | None = None
+    compile_duration_seconds: float | None = None
+    test_duration_seconds: float | None = None
     compiled: bool = False
     has_tests: bool = False
     tests_passed: bool = False
@@ -147,22 +153,121 @@ class ProjectScan:
     root_pom: Path | None = None
     has_tests: bool = False
 
-FRAMEWORK_PATTERNS: dict[str, list[str]] = {
+TEST_FRAMEWORK_PATTERNS: dict[str, list[str]] = {
+    "JUnit 4": [
+        r"<groupId>\s*junit\s*</groupId>",
+        r"<artifactId>\s*junit\s*</artifactId>",
+    ],
+    "JUnit 5": [
+        r"<groupId>\s*org\.junit\.jupiter\s*</groupId>",
+        r"<artifactId>\s*junit-jupiter(?:-[^<]+)?\s*</artifactId>",
+        r"<artifactId>\s*junit-platform(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "JUnit Vintage": [
+        r"<artifactId>\s*junit-vintage(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "TestNG": [
+        r"<artifactId>\s*testng\s*</artifactId>",
+        r"<groupId>\s*org\.testng\s*</groupId>",
+    ],
+    "Spock": [
+        r"<groupId>\s*org\.spockframework\s*</groupId>",
+        r"<artifactId>\s*spock-core\s*</artifactId>",
+        r"<artifactId>\s*spock-spring\s*</artifactId>",
+    ],
+    "Cucumber": [
+        r"<groupId>\s*io\.cucumber\s*</groupId>",
+        r"<artifactId>\s*cucumber-java\s*</artifactId>",
+        r"<artifactId>\s*cucumber-junit\s*</artifactId>",
+        r"<artifactId>\s*cucumber-junit-platform-engine\s*</artifactId>",
+        r"<artifactId>\s*cucumber-testng\s*</artifactId>",
+    ],
+    "Karate": [
+        r"<groupId>\s*com\.intuit\.karate\s*</groupId>",
+        r"<artifactId>\s*karate-junit5\s*</artifactId>",
+        r"<artifactId>\s*karate-junit4\s*</artifactId>",
+    ],
+}
+
+MOCK_LIBRARY_PATTERNS: dict[str, list[str]] = {
     "Mockito": [
         r"<artifactId>\s*mockito-core\s*</artifactId>",
         r"<artifactId>\s*mockito-all\s*</artifactId>",
         r"<artifactId>\s*mockito-junit-jupiter\s*</artifactId>",
         r"<groupId>\s*org\.mockito\s*</groupId>",
     ],
-    "TestNG": [
-        r"<artifactId>\s*testng\s*</artifactId>",
-        r"<groupId>\s*org\.testng\s*</groupId>",
+    "EasyMock": [
+        r"<groupId>\s*org\.easymock\s*</groupId>",
+        r"<artifactId>\s*easymock\s*</artifactId>",
     ],
-    "JUnit": [
-        r"<artifactId>\s*junit\s*</artifactId>",
-        r"<artifactId>\s*junit-jupiter(?:-[^<]+)?\s*</artifactId>",
-        r"<artifactId>\s*junit-vintage(?:-[^<]+)?\s*</artifactId>",
-        r"<groupId>\s*org\.junit(?:\.jupiter)?\s*</groupId>",
+    "JMock": [
+        r"<groupId>\s*org\.jmock\s*</groupId>",
+        r"<artifactId>\s*jmock(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "PowerMock": [
+        r"<groupId>\s*org\.powermock\s*</groupId>",
+        r"<artifactId>\s*powermock(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "WireMock": [
+        r"<groupId>\s*com\.github\.tomakehurst\s*</groupId>",
+        r"<groupId>\s*org\.wiremock\s*</groupId>",
+        r"<artifactId>\s*wiremock(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "MockServer": [
+        r"<groupId>\s*org\.mock-server\s*</groupId>",
+        r"<artifactId>\s*mockserver(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "MockWebServer": [
+        r"<groupId>\s*com\.squareup\.okhttp3\s*</groupId>",
+        r"<artifactId>\s*mockwebserver\s*</artifactId>",
+    ],
+}
+
+ASSERTION_LIBRARY_PATTERNS: dict[str, list[str]] = {
+    "AssertJ": [
+        r"<groupId>\s*org\.assertj\s*</groupId>",
+        r"<artifactId>\s*assertj-core\s*</artifactId>",
+    ],
+    "Hamcrest": [
+        r"<groupId>\s*org\.hamcrest\s*</groupId>",
+        r"<artifactId>\s*hamcrest(?:-[^<]+)?\s*</artifactId>",
+    ],
+    "Truth": [
+        r"<groupId>\s*com\.google\.truth\s*</groupId>",
+        r"<artifactId>\s*truth\s*</artifactId>",
+    ],
+    "Awaitility": [
+        r"<groupId>\s*org\.awaitility\s*</groupId>",
+        r"<artifactId>\s*awaitility\s*</artifactId>",
+    ],
+    "JSONAssert": [
+        r"<groupId>\s*org\.skyscreamer\s*</groupId>",
+        r"<artifactId>\s*jsonassert\s*</artifactId>",
+    ],
+    "XMLUnit": [
+        r"<groupId>\s*org\.xmlunit\s*</groupId>",
+        r"<artifactId>\s*xmlunit(?:-[^<]+)?\s*</artifactId>",
+    ],
+}
+
+INTEGRATION_TEST_TOOL_PATTERNS: dict[str, list[str]] = {
+    "Spring Test": [
+        r"<artifactId>\s*spring-test\s*</artifactId>",
+    ],
+    "Spring Boot Test": [
+        r"<artifactId>\s*spring-boot-starter-test\s*</artifactId>",
+    ],
+    "Testcontainers": [
+        r"<groupId>\s*org\.testcontainers\s*</groupId>",
+        r"<artifactId>\s*testcontainers\s*</artifactId>",
+    ],
+    "REST Assured": [
+        r"<groupId>\s*io\.rest-assured\s*</groupId>",
+        r"<artifactId>\s*rest-assured\s*</artifactId>",
+    ],
+    "Arquillian": [
+        r"<groupId>\s*org\.jboss\.arquillian(?:\.[^<]+)?\s*</groupId>",
+        r"<artifactId>\s*arquillian(?:-[^<]+)?\s*</artifactId>",
     ],
 }
 
@@ -297,19 +402,36 @@ def read_pom_required_version(pom_path: Path) -> str | None:
     return None
 
 
-def detect_test_framework_from_pom(pom_path: Path) -> str:
+def detect_patterns(content: str, patterns_by_name: dict[str, list[str]]) -> list[str]:
+    return [
+        name
+        for name, patterns in patterns_by_name.items()
+        if any(re.search(pattern, content, re.IGNORECASE | re.DOTALL) for pattern in patterns)
+    ]
+
+
+def detect_test_dependencies_from_pom(pom_path: Path) -> dict[str, str]:
     try:
         content = pom_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
-        return ""
+        return {
+            "test_frameworks": "",
+            "mock_libraries": "",
+            "assertion_libraries": "",
+            "integration_test_tools": "",
+        }
 
-    detected = [
-        framework
-        for framework, patterns in FRAMEWORK_PATTERNS.items()
-        if any(re.search(pattern, content, re.IGNORECASE) for pattern in patterns)
-    ]
+    return {
+        "test_frameworks": ", ".join(detect_patterns(content, TEST_FRAMEWORK_PATTERNS)),
+        "mock_libraries": ", ".join(detect_patterns(content, MOCK_LIBRARY_PATTERNS)),
+        "assertion_libraries": ", ".join(detect_patterns(content, ASSERTION_LIBRARY_PATTERNS)),
+        "integration_test_tools": ", ".join(detect_patterns(content, INTEGRATION_TEST_TOOL_PATTERNS)),
+    }
 
-    return ", ".join(detected)
+
+def detect_test_framework_from_pom(pom_path: Path) -> str:
+    return detect_test_dependencies_from_pom(pom_path)["test_frameworks"]
+
 
 # ---------------------------------------------------------------------------
 # Diagnóstico de erros de compilação / teste
@@ -649,6 +771,18 @@ def run_tests(
     
     return run(cmd, project_dir, env, TIMEOUT_TEST, deadline)
 
+
+def timed_compile_project(*args: Any, **kwargs: Any) -> tuple[bool, str, float]:
+    started_at = time.monotonic()
+    ok, output = compile_project(*args, **kwargs)
+    return ok, output, round(time.monotonic() - started_at, 3)
+
+
+def timed_run_tests(*args: Any, **kwargs: Any) -> tuple[bool, str, float]:
+    started_at = time.monotonic()
+    ok, output = run_tests(*args, **kwargs)
+    return ok, output, round(time.monotonic() - started_at, 3)
+
 # ---------------------------------------------------------------------------
 # Nome local do repositório
 # ---------------------------------------------------------------------------
@@ -667,6 +801,10 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
     java_version   = str(entry.get("java_version", "")).strip()
     build          = entry.get("build", "Maven").strip()
     test_framework = entry.get("test_framework", "").strip()
+    test_frameworks = entry.get("test_frameworks", "").strip()
+    mock_libraries = entry.get("mock_libraries", "").strip()
+    assertion_libraries = entry.get("assertion_libraries", "").strip()
+    integration_test_tools = entry.get("integration_test_tools", "").strip()
     expected_commit_sha = str(entry.get("commit_sha") or "").strip() or None
     allow_jdk_upgrade = bool(entry.get("allow_jdk_upgrade"))
 
@@ -674,6 +812,10 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
         name=name, repository_url=repo_url,
         java_version=java_version, effective_java_version=java_version,
         build=build, test_framework=test_framework,
+        test_frameworks=test_frameworks,
+        mock_libraries=mock_libraries,
+        assertion_libraries=assertion_libraries,
+        integration_test_tools=integration_test_tools,
         commit_sha=expected_commit_sha,
     )
 
@@ -720,8 +862,17 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
     if pom is None:
         result.mark_eliminated("structure", "pom.xml não encontrado na raiz")
         return result
+    detected_test_dependencies = detect_test_dependencies_from_pom(pom)
+    if not result.test_frameworks:
+        result.test_frameworks = detected_test_dependencies["test_frameworks"]
+    if not result.mock_libraries:
+        result.mock_libraries = detected_test_dependencies["mock_libraries"]
+    if not result.assertion_libraries:
+        result.assertion_libraries = detected_test_dependencies["assertion_libraries"]
+    if not result.integration_test_tools:
+        result.integration_test_tools = detected_test_dependencies["integration_test_tools"]
     if not result.test_framework:
-        result.test_framework = detect_test_framework_from_pom(pom)
+        result.test_framework = result.test_frameworks
 
     # ── 4. Validar compatibilidade com o JDK selecionado ─────────────────────
     pom_ver = read_pom_required_version(pom)
@@ -764,9 +915,11 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
     # ── 6. Maven com recuperacao sob demanda ─────────────────────────────────
     skip_st = False  # skip_source_target — ativado pelo P4
     if run_test_suite:
-        ok, out = run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+        ok, out, duration = timed_run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+        result.test_duration_seconds = duration
     else:
-        ok, out = compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+        ok, out, duration = timed_compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+        result.compile_duration_seconds = duration
 
     if not ok:
         # P4: lambda/diamond em -source mais antigo → remove -source/-target e recompila
@@ -774,9 +927,11 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
             log.info("[%s] P4: sintaxe Java 8+ com -source legado; removendo flags de source/target.", name)
             skip_st = True
             if run_test_suite:
-                ok, out = run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                ok, out, duration = timed_run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                result.test_duration_seconds = (result.test_duration_seconds or 0.0) + duration
             else:
-                ok, out = compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                ok, out, duration = timed_compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                result.compile_duration_seconds = (result.compile_duration_seconds or 0.0) + duration
 
     if not ok:
         # P2/P3a/P3b: versão insuficiente detectada na saída de erro
@@ -794,9 +949,11 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
                 env = build_env(jdk_path)
                 log.info("[%s] Reexecutando Maven com JDK %s...", name, effective_ver)
                 if run_test_suite:
-                    ok, out = run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    ok, out, duration = timed_run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    result.test_duration_seconds = (result.test_duration_seconds or 0.0) + duration
                 else:
-                    ok, out = compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    ok, out, duration = timed_compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    result.compile_duration_seconds = (result.compile_duration_seconds or 0.0) + duration
 
     if not ok:
         # P5: submódulos faltando → tenta clone completo e recompila
@@ -813,9 +970,11 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
             )
             if ok_clone:
                 if run_test_suite:
-                    ok, out = run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    ok, out, duration = timed_run_tests(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    result.test_duration_seconds = (result.test_duration_seconds or 0.0) + duration
                 else:
-                    ok, out = compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    ok, out, duration = timed_compile_project(project_dir, env, java_version, effective_ver, skip_st, deadline)
+                    result.compile_duration_seconds = (result.compile_duration_seconds or 0.0) + duration
             else:
                 out = clone_out  # propaga erro do clone
 

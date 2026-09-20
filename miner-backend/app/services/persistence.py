@@ -717,6 +717,12 @@ def _save_analysis_result(
                 effective_java_version,
                 build_tool,
                 test_framework,
+                test_frameworks,
+                mock_libraries,
+                assertion_libraries,
+                integration_test_tools,
+                compile_duration_seconds,
+                test_duration_seconds,
                 compiled,
                 has_tests,
                 tests_passed,
@@ -724,13 +730,19 @@ def _save_analysis_result(
                 error_stage,
                 error_message
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(run_repository_id)
             DO UPDATE SET
                 declared_java_version = excluded.declared_java_version,
                 effective_java_version = excluded.effective_java_version,
                 build_tool = excluded.build_tool,
                 test_framework = excluded.test_framework,
+                test_frameworks = excluded.test_frameworks,
+                mock_libraries = excluded.mock_libraries,
+                assertion_libraries = excluded.assertion_libraries,
+                integration_test_tools = excluded.integration_test_tools,
+                compile_duration_seconds = excluded.compile_duration_seconds,
+                test_duration_seconds = excluded.test_duration_seconds,
                 compiled = excluded.compiled,
                 has_tests = excluded.has_tests,
                 tests_passed = excluded.tests_passed,
@@ -745,6 +757,12 @@ def _save_analysis_result(
                 repo.get("effective_java_version"),
                 repo.get("build"),
                 repo.get("test_framework"),
+                repo.get("test_frameworks"),
+                repo.get("mock_libraries"),
+                repo.get("assertion_libraries"),
+                repo.get("integration_test_tools"),
+                repo.get("compile_duration_seconds"),
+                repo.get("test_duration_seconds"),
                 bool_int(repo.get("compiled")),
                 bool_int(repo.get("has_tests")),
                 bool_int(repo.get("tests_passed")),
@@ -782,6 +800,12 @@ def _save_analysis_cache(
                 effective_java_version,
                 build_tool,
                 test_framework,
+                test_frameworks,
+                mock_libraries,
+                assertion_libraries,
+                integration_test_tools,
+                compile_duration_seconds,
+                test_duration_seconds,
                 compiled,
                 has_tests,
                 tests_passed,
@@ -789,7 +813,7 @@ def _save_analysis_cache(
                 error_stage,
                 error_summary
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(repository_id, commit_sha, run_test_suite)
             DO UPDATE SET
                 allow_jdk_upgrade = excluded.allow_jdk_upgrade,
@@ -797,6 +821,12 @@ def _save_analysis_cache(
                 effective_java_version = excluded.effective_java_version,
                 build_tool = excluded.build_tool,
                 test_framework = excluded.test_framework,
+                test_frameworks = excluded.test_frameworks,
+                mock_libraries = excluded.mock_libraries,
+                assertion_libraries = excluded.assertion_libraries,
+                integration_test_tools = excluded.integration_test_tools,
+                compile_duration_seconds = excluded.compile_duration_seconds,
+                test_duration_seconds = excluded.test_duration_seconds,
                 compiled = excluded.compiled,
                 has_tests = excluded.has_tests,
                 tests_passed = excluded.tests_passed,
@@ -814,6 +844,12 @@ def _save_analysis_cache(
                 repo.get("effective_java_version"),
                 repo.get("build"),
                 repo.get("test_framework"),
+                repo.get("test_frameworks"),
+                repo.get("mock_libraries"),
+                repo.get("assertion_libraries"),
+                repo.get("integration_test_tools"),
+                repo.get("compile_duration_seconds"),
+                repo.get("test_duration_seconds"),
                 bool_int(repo.get("compiled")),
                 bool_int(repo.get("has_tests")),
                 bool_int(repo.get("tests_passed")),
@@ -871,6 +907,12 @@ def get_run_repositories(run_id: int) -> list[dict[str, Any]]:
                 ar.effective_java_version,
                 ar.build_tool,
                 ar.test_framework,
+                ar.test_frameworks,
+                ar.mock_libraries,
+                ar.assertion_libraries,
+                ar.integration_test_tools,
+                ar.compile_duration_seconds,
+                ar.test_duration_seconds,
                 ar.compiled,
                 ar.has_tests,
                 ar.tests_passed,
@@ -912,6 +954,12 @@ def get_run_repositories(run_id: int) -> list[dict[str, Any]]:
                     "effective_java_version": row["effective_java_version"],
                     "build": row["build_tool"],
                     "test_framework": row["test_framework"],
+                    "test_frameworks": row["test_frameworks"],
+                    "mock_libraries": row["mock_libraries"],
+                    "assertion_libraries": row["assertion_libraries"],
+                    "integration_test_tools": row["integration_test_tools"],
+                    "compile_duration_seconds": row["compile_duration_seconds"],
+                    "test_duration_seconds": row["test_duration_seconds"],
                     "compiled": bool(row["compiled"]),
                     "has_tests": bool(row["has_tests"]),
                     "tests_passed": bool(row["tests_passed"]),
@@ -969,6 +1017,12 @@ def get_analysis_cache(
                 ac.effective_java_version,
                 ac.build_tool,
                 ac.test_framework,
+                ac.test_frameworks,
+                ac.mock_libraries,
+                ac.assertion_libraries,
+                ac.integration_test_tools,
+                ac.compile_duration_seconds,
+                ac.test_duration_seconds,
                 ac.compiled,
                 ac.has_tests,
                 ac.tests_passed,
@@ -996,6 +1050,12 @@ def get_analysis_cache(
         "effective_java_version": row["effective_java_version"],
         "build": row["build_tool"],
         "test_framework": row["test_framework"],
+        "test_frameworks": row["test_frameworks"],
+        "mock_libraries": row["mock_libraries"],
+        "assertion_libraries": row["assertion_libraries"],
+        "integration_test_tools": row["integration_test_tools"],
+        "compile_duration_seconds": row["compile_duration_seconds"],
+        "test_duration_seconds": row["test_duration_seconds"],
         "compiled": bool(row["compiled"]),
         "has_tests": bool(row["has_tests"]),
         "tests_passed": bool(row["tests_passed"]),
@@ -1024,6 +1084,12 @@ def get_latest_analysis_cache(
                 ac.effective_java_version,
                 ac.build_tool,
                 ac.test_framework,
+                ac.test_frameworks,
+                ac.mock_libraries,
+                ac.assertion_libraries,
+                ac.integration_test_tools,
+                ac.compile_duration_seconds,
+                ac.test_duration_seconds,
                 ac.compiled,
                 ac.has_tests,
                 ac.tests_passed,
@@ -1051,6 +1117,12 @@ def get_latest_analysis_cache(
         "effective_java_version": row["effective_java_version"],
         "build": row["build_tool"],
         "test_framework": row["test_framework"],
+        "test_frameworks": row["test_frameworks"],
+        "mock_libraries": row["mock_libraries"],
+        "assertion_libraries": row["assertion_libraries"],
+        "integration_test_tools": row["integration_test_tools"],
+        "compile_duration_seconds": row["compile_duration_seconds"],
+        "test_duration_seconds": row["test_duration_seconds"],
         "compiled": bool(row["compiled"]),
         "has_tests": bool(row["has_tests"]),
         "tests_passed": bool(row["tests_passed"]),
@@ -1059,6 +1131,26 @@ def get_latest_analysis_cache(
         "error_message": row["error_summary"],
         "cache_hit": True,
     }
+
+
+def invalidate_outdated_analysis_cache(full_name: str, current_commit_sha: str) -> int:
+    if not full_name or not current_commit_sha:
+        return 0
+
+    with get_connection() as conn:
+        cursor = conn.execute(
+            """
+            DELETE FROM analysis_cache
+            WHERE repository_id = (
+                SELECT id FROM repositories WHERE full_name = ?
+            )
+            AND commit_sha IS NOT NULL
+            AND commit_sha != ''
+            AND commit_sha != ?
+            """,
+            (full_name, current_commit_sha),
+        )
+        return cursor.rowcount if cursor.rowcount is not None else 0
 
 
 def persist_search_results(

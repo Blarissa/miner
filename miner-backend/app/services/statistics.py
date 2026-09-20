@@ -28,8 +28,8 @@ def metadata(repo: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def repo_java_version(repo: dict[str, Any]) -> str:
-    meta = metadata(repo)
+def repo_java_version(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
     return str(
         repo.get("effective_java_version")
         or repo.get("java_version")
@@ -38,14 +38,68 @@ def repo_java_version(repo: dict[str, Any]) -> str:
     )
 
 
-def repo_build(repo: dict[str, Any]) -> str:
-    meta = metadata(repo)
+def repo_declared_java_version(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
+    return str(repo.get("java_version") or meta.get("java_version") or "unknown")
+
+
+def repo_effective_java_version(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
+    declared = repo_declared_java_version(repo, meta)
+    return str(repo.get("effective_java_version") or declared or "unknown")
+
+
+def java_version_comparison_label(declared: str, effective: str) -> str:
+    return "Mesma versao" if declared == effective else "Versao ajustada"
+
+
+def repo_build(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
     return str(repo.get("build") or meta.get("build") or "unknown")
 
 
-def repo_test_framework(repo: dict[str, Any]) -> str:
-    meta = metadata(repo)
+def repo_test_framework(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
     return str(repo.get("test_framework") or meta.get("test_framework") or "unknown")
+
+
+def repo_text_field(repo: dict[str, Any], field: str, meta: dict[str, Any] | None = None) -> str:
+    meta = meta if meta is not None else metadata(repo)
+    return str(repo.get(field) or meta.get(field) or "unknown")
+
+
+def split_labels(value: str) -> list[str]:
+    labels = [item.strip() for item in value.split(",") if item.strip()]
+    return labels or ["unknown"]
+
+
+def optional_float(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def duration_stats(values: list[float]) -> dict[str, Any]:
+    if not values:
+        return {
+            "count": 0,
+            "total_seconds": 0.0,
+            "average_seconds": 0.0,
+            "min_seconds": 0.0,
+            "max_seconds": 0.0,
+        }
+
+    total = sum(values)
+    return {
+        "count": len(values),
+        "total_seconds": round(total, 3),
+        "average_seconds": round(total / len(values), 3),
+        "min_seconds": round(min(values), 3),
+        "max_seconds": round(max(values), 3),
+    }
 
 
 def is_analyzed(repo: dict[str, Any]) -> bool:
@@ -145,7 +199,15 @@ def build_statistics(
     eliminated_total = 0
     accepted_total = 0
 
-    java_counter: Counter[str] = Counter()
+    declared_java_counter: Counter[str] = Counter()
+    effective_java_counter: Counter[str] = Counter()
+    java_comparison_counter: Counter[str] = Counter()
+    test_frameworks_counter: Counter[str] = Counter()
+    mock_libraries_counter: Counter[str] = Counter()
+    assertion_libraries_counter: Counter[str] = Counter()
+    integration_test_tools_counter: Counter[str] = Counter()
+    compile_duration_values: list[float] = []
+    test_duration_values: list[float] = []
     tests_counter: Counter[str] = Counter()
     error_stage_counter: Counter[str] = Counter()
     compile_failed_by_java: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0})
@@ -160,14 +222,19 @@ def build_statistics(
         if scope == "eliminated" and not eliminated:
             continue
 
+        meta = metadata(repo)  
         total += 1
         analyzed = is_analyzed(repo)
         compiled = payload_bool(repo.get("compiled"))
         has_tests = payload_bool(repo.get("has_tests"))
         tests_passed = payload_bool(repo.get("tests_passed"))
-        java_version = repo_java_version(repo)
-        build = repo_build(repo)
-        framework = repo_test_framework(repo)
+        declared_java_version = repo_declared_java_version(repo, meta)
+        effective_java_version = repo_effective_java_version(repo, meta)
+        java_version = effective_java_version
+        build = repo_build(repo, meta)
+        framework = repo_test_framework(repo, meta)
+        compile_duration = optional_float(repo.get("compile_duration_seconds"))
+        test_duration = optional_float(repo.get("test_duration_seconds"))
 
         analyzed_total += int(analyzed)
         compiled_total += int(compiled)
@@ -176,7 +243,23 @@ def build_statistics(
         eliminated_total += int(eliminated)
         accepted_total += int(accepted)
 
-        java_counter[java_version] += 1
+        declared_java_counter[declared_java_version] += 1
+        effective_java_counter[effective_java_version] += 1
+        java_comparison_counter[
+            java_version_comparison_label(declared_java_version, effective_java_version)
+        ] += 1
+        for label in split_labels(repo_text_field(repo, "test_frameworks", meta)):
+            test_frameworks_counter[label] += 1
+        for label in split_labels(repo_text_field(repo, "mock_libraries", meta)):
+            mock_libraries_counter[label] += 1
+        for label in split_labels(repo_text_field(repo, "assertion_libraries", meta)):
+            assertion_libraries_counter[label] += 1
+        for label in split_labels(repo_text_field(repo, "integration_test_tools", meta)):
+            integration_test_tools_counter[label] += 1
+        if compile_duration is not None:
+            compile_duration_values.append(compile_duration)
+        if test_duration is not None:
+            test_duration_values.append(test_duration)
         tests_counter["with_tests" if has_tests else "without_tests"] += 1
         if eliminated:
             error_stage_counter[str(repo.get("error_stage") or "unknown")] += 1
@@ -212,7 +295,21 @@ def build_statistics(
             "tests_passed": tests_passed_total,
             "accepted": accepted_total,
         },
-        "java_versions": counter_stats(java_counter, total),
+        "java_versions": counter_stats(effective_java_counter, total),
+        "declared_java_versions": counter_stats(declared_java_counter, total),
+        "effective_java_versions": counter_stats(effective_java_counter, total),
+        "java_declared_effective_comparison": counter_stats(
+            java_comparison_counter,
+            total,
+        ),
+        "test_frameworks": counter_stats(test_frameworks_counter, total),
+        "mock_libraries": counter_stats(mock_libraries_counter, total),
+        "assertion_libraries": counter_stats(assertion_libraries_counter, total),
+        "integration_test_tools": counter_stats(integration_test_tools_counter, total),
+        "stage_durations": {
+            "compilation": duration_stats(compile_duration_values),
+            "testing": duration_stats(test_duration_values),
+        },
         "test_repository_relation": {
             "with_tests": has_tests_total,
             "without_tests": total - has_tests_total,

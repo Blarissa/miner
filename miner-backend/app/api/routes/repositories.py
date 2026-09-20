@@ -22,8 +22,10 @@ from app.services.persistence import (
     get_run_statistics,
     get_search_filters_for_run,
     restart_mining_run,
+    save_statistics,
     save_search_filters,
 )
+from app.services.statistics import build_statistics
 
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
@@ -193,6 +195,14 @@ def get_repository_run_statistics(run_id: int) -> dict[str, Any]:
     if run is None:
         raise HTTPException(status_code=404, detail="Run nao encontrado.")
     statistics = get_run_statistics(run_id)
+    if statistics is None and payload_bool(run.get("include_statistics"), True):
+        repositories = get_run_repositories(run_id)
+        if repositories:
+            statistics = build_statistics(
+                repositories,
+                run.get("statistics_scope") or "accepted",
+            )
+            save_statistics(run_id, statistics)
     return {
         "run_id": run_id,
         "status": run["status"],

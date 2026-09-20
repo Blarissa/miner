@@ -16,6 +16,10 @@ import {
     Calendar,
     Plus,
     Trash2,
+    Info,
+    TestTube2,
+    Layers3,
+    Clock,
 } from "lucide-react";
 import {
     cancelRepositoryRun,
@@ -90,6 +94,26 @@ const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Erro inesperado";
+}
+
+function splitTags(value?: string | null): string[] {
+    if (!value) return [];
+    return value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+function formatDuration(seconds?: number | null): string {
+    if (seconds === null || seconds === undefined || Number.isNaN(seconds)) {
+        return "—";
+    }
+    if (seconds < 60) {
+        return `${seconds.toFixed(1)}s`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60);
+    return `${minutes}m ${remainingSeconds.toString().padStart(2, "0")}s`;
 }
 
 function canResumeMiningRun(
@@ -190,17 +214,83 @@ export default function MiningDashboard({
     const [lastRunIncludedTests, setLastRunIncludedTests] = useState<boolean>(false);
     const [runStatus, setRunStatus] = useState<MiningRunStatus | null>(null);
     const [apiOnline, setApiOnline] = useState<boolean | null>(null);
-    const [selectedRepoLogs, setSelectedRepoLogs] = useState<AnalyzedRepo | null>(null);
+    const [selectedRepoDetails, setSelectedRepoDetails] = useState<AnalyzedRepo | null>(null);
 
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [selectedJavaVersion, setSelectedJavaVersion] = useState<string>("ALL");
     const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
     const isBuildOnlyMode = formData.require_buildable && !formData.require_tests_passed;
     const analyzerWillRun = formData.require_buildable || formData.require_tests_passed;
-    const { total: progressTotal, current: progressCurrent, percent: progressPercent } =
-        progressFromRunStatus(runStatus);
+    const 
+    { 
+        total: progressTotal, 
+        current: progressCurrent, 
+        percent: progressPercent 
+    } = progressFromRunStatus(runStatus);
     const canResumeRun = canResumeMiningRun(runStatus, lastRunId);
     const canCancelRun = canCancelMiningRun(runStatus, lastRunId);
+    const [errorBanner, setErrorBanner] = useState<string | null>(null);
+    const [statistics, setStatisticsState] = useState<RepositoryStatistics | null>(null);
+
+    const setStatistics = useCallback((value: RepositoryStatistics | null) => {
+        setStatisticsState(value);
+        onStatisticsChange(value); 
+    }, [onStatisticsChange]);
+
+    const DEFAULT_JAVA_VERSIONS = ["6", "7", "8", "11", "17", "21"];
+    const javaVersionOptions = useMemo(() => {
+        if (statistics?.java_versions?.length) {
+            return statistics.java_versions
+                .map((item) => item.value)
+                .filter((value) => value !== "unknown");
+        }
+        return DEFAULT_JAVA_VERSIONS;
+    }, [statistics]);
+
+    const handleProgress = useCallback(({ run_id, status, repositories: liveRepos, statistics: liveStats }: {
+        run_id: number;
+        status: MiningRunStatus;
+        repositories?: AnalyzedRepo[];
+        statistics?: RepositoryStatistics | null;
+    }) => {
+        setLastRunId(run_id);
+        setRunStatus(status);
+        setLastTotal(status.accepted_repositories || status.total_candidates || 0);
+        if (liveRepos) setRepositories(liveRepos);       // <- tabela agora atualiza ao vivo
+        if (liveStats !== undefined) setStatistics(liveStats ?? null);
+    }, [setStatistics]);
+
+    const handleSearch = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setErrorBanner(null);
+        try {
+            setRepositories([]);
+            setRunStatus(null);
+            const result = await searchRepositories(formData, handleProgress);
+            applySearchResult(result, formData.require_tests_passed, formData.persist_eliminated_repositories);
+        } catch (error: unknown) {
+            console.error("Erro na busca:", error);
+            setErrorBanner(`Falha ao minerar repositórios: ${errorMessage(error)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleResumeRun = async () => {
+        if (lastRunId === null) return;
+        setLoading(true);
+        setErrorBanner(null);
+        try {
+            const result = await resumeRepositoryRun(lastRunId, handleProgress);
+            applySearchResult(result, Boolean(result.status?.require_tests_passed), Boolean(result.status?.persist_eliminated_repositories));
+        } catch (error: unknown) {
+            console.error("Erro ao retomar consulta:", error);
+            setErrorBanner(`Falha ao retomar consulta: ${errorMessage(error)}`);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const applySearchResult = useCallback((
         result: SearchRepositoriesResult,
@@ -302,55 +392,7 @@ export default function MiningDashboard({
             queries: currentFormData.queries.filter((_, queryIndex) => queryIndex !== index),
         }));
     };
-
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-
-        try {
-            setRepositories([]);
-            setRunStatus(null);
-            const result = await searchRepositories(formData, ({ run_id, status }) => {
-                setLastRunId(run_id);
-                setRunStatus(status);
-                setLastTotal(status.accepted_repositories || status.total_candidates || 0);
-            });
-            applySearchResult(
-                result,
-                formData.require_tests_passed,
-                formData.persist_eliminated_repositories,
-            );
-        } catch (error: unknown) {
-            console.error("Erro na busca:", error);
-            alert(`Falha ao minerar repositórios: ${errorMessage(error)}`);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleResumeRun = async () => {
-        if (lastRunId === null) return;
-        setLoading(true);
-
-        try {
-            const result = await resumeRepositoryRun(lastRunId, ({ run_id, status }) => {
-                setLastRunId(run_id);
-                setRunStatus(status);
-                setLastTotal(status.accepted_repositories || status.total_candidates || 0);
-            });
-            applySearchResult(
-                result,
-                Boolean(result.status?.require_tests_passed),
-                Boolean(result.status?.persist_eliminated_repositories),
-            );
-        } catch (error: unknown) {
-            console.error("Erro ao retomar consulta:", error);
-            alert(`Falha ao retomar consulta: ${errorMessage(error)}`);
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    
     const handleCancelRun = async () => {
         if (lastRunId === null) return;
 
@@ -403,6 +445,23 @@ export default function MiningDashboard({
                         </span>
                     </div>
                 </header>
+
+                {/* Banner de Erro */}
+                {errorBanner && (
+                    <div className="flex items-start justify-between gap-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                        <div className="flex items-start gap-2">
+                            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+                            <span>{errorBanner}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setErrorBanner(null)}
+                            className="shrink-0 text-rose-300 hover:text-rose-100 text-xs font-semibold"
+                        >
+                            Fechar
+                        </button>
+                    </div>
+                )}
 
                 {/* Formulário de Busca */}
                 <section className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-6 shadow-md">
@@ -1174,9 +1233,9 @@ export default function MiningDashboard({
                                     <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
                                         Aceitação {Math.round((runStatus.acceptance_rate ?? 0) * 100)}%
                                     </span>
-                                    {Boolean(runStatus.exhausted) && (
-                                        <span className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-amber-300">
-                                            Páginas esgotadas
+                                    {runStatus && !canResumeRun && Boolean(runStatus.exhausted) && (
+                                        <span className="text-xs text-amber-400">
+                                            Não é possível retomar: todas as páginas disponíveis no GitHub para essa busca já foram esgotadas.
                                         </span>
                                     )}
                                 </>
@@ -1207,8 +1266,9 @@ export default function MiningDashboard({
                             <button
                                 type="button"
                                 onClick={onOpenStatistics}
-                                disabled={!formData.include_statistics}
-                                className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer"
+                                disabled={!statistics}
+                                title={!statistics ? "Nenhuma estatística carregada ainda" : undefined}
+                                className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 <SlidersHorizontal className="h-4 w-4 text-indigo-400" />
                                 Ver estatísticas
@@ -1266,12 +1326,9 @@ export default function MiningDashboard({
                                     className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-zinc-200 focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="ALL">Todas</option>
-                                    <option value="6">Java 6</option>
-                                    <option value="7">Java 7</option>
-                                    <option value="8">Java 8</option>
-                                    <option value="11">Java 11</option>
-                                    <option value="17">Java 17</option>
-                                    <option value="21">Java 21</option>
+                                    {javaVersionOptions.map((version) => (
+                                        <option key={version} value={version}>Java {version}</option>
+                                    ))}
                                 </select>
                             </div>
 
@@ -1330,7 +1387,7 @@ export default function MiningDashboard({
                                     </tr>
                                 ) : (
                                     filteredRepositories.map((repo) => (
-                                        <tr key={repo.name} className="hover:bg-zinc-700/30 transition">
+                                        <tr key={`${repo.name}::${repo.matched_file ?? "root"}::${repo.commit_sha ?? ""}`} className="hover:bg-zinc-700/30 transition">
                                             <td className="py-3 px-4 font-mono font-medium text-zinc-100">
                                                 {repo.name}
                                             </td>
@@ -1365,6 +1422,11 @@ export default function MiningDashboard({
                                                         <XCircle className="h-3.5 w-3.5" /> Falhou
                                                     </span>
                                                 )}
+                                                {repo.compile_duration_seconds !== null && repo.compile_duration_seconds !== undefined && (
+                                                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                                        {formatDuration(repo.compile_duration_seconds)}
+                                                    </div>
+                                                )}
                                             </td>
 
                                             <td className="py-3 px-4">
@@ -1380,6 +1442,11 @@ export default function MiningDashboard({
                                                     <span className="inline-flex items-center gap-1 text-rose-400 font-medium">
                                                         <XCircle className="h-3.5 w-3.5" /> Falharam
                                                     </span>
+                                                )}
+                                                {repo.test_duration_seconds !== null && repo.test_duration_seconds !== undefined && (
+                                                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                                        {formatDuration(repo.test_duration_seconds)}
+                                                    </div>
                                                 )}
                                             </td>
 
@@ -1419,15 +1486,13 @@ export default function MiningDashboard({
                                             </td>
 
                                             <td className="py-3 px-4 text-right space-x-2">
-                                                {repo.error_message && (
-                                                    <button
-                                                        onClick={() => setSelectedRepoLogs(repo)}
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-700/60 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 transition cursor-pointer font-medium"
-                                                        title="Ver Logs de Erro"
-                                                    >
-                                                        <Terminal className="h-3 w-3 text-zinc-400" /> Logs
-                                                    </button>
-                                                )}
+                                                <button
+                                                    onClick={() => setSelectedRepoDetails(repo)}
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-700/60 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 transition cursor-pointer font-medium"
+                                                    title="Ver detalhes de testes e tempos"
+                                                >
+                                                    <Info className="h-3 w-3 text-zinc-400" /> Detalhes
+                                                </button>
                                                 <a
                                                     href={repo.repository_url}
                                                     target="_blank"
@@ -1445,26 +1510,126 @@ export default function MiningDashboard({
                     </div>
                 </section>
 
-                {/* Modal de Logs */}
-                {selectedRepoLogs && (
+                {/* Modal de Detalhes */}
+                {selectedRepoDetails && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-3xl w-full max-h-[80vh] flex flex-col shadow-2xl">
+                        <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl">
                             <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60 rounded-t-xl">
                                 <div className="flex items-center gap-2">
-                                    <Terminal className="h-4 w-4 text-rose-400" />
+                                    <Info className="h-4 w-4 text-indigo-400" />
                                     <h3 className="font-semibold text-sm text-zinc-100">
-                                        Logs: {selectedRepoLogs.name}
+                                        Detalhes: {selectedRepoDetails.name}
                                     </h3>
                                 </div>
                                 <button
-                                    onClick={() => setSelectedRepoLogs(null)}
+                                    onClick={() => setSelectedRepoDetails(null)}
                                     className="text-zinc-400 hover:text-white text-xs px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition cursor-pointer"
                                 >
                                     Fechar
                                 </button>
                             </div>
-                            <div className="p-4 overflow-y-auto flex-1 font-mono text-xs text-rose-300 bg-zinc-950 rounded-b-xl leading-relaxed whitespace-pre-wrap">
-                                {selectedRepoLogs.error_message || "Nenhuma mensagem detalhada capturada."}
+                            <div className="p-4 overflow-y-auto flex-1 space-y-5">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="bg-zinc-800/60 border border-zinc-700/60 rounded-lg p-3">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <Clock className="h-3.5 w-3.5 text-amber-400" /> Tempo de compilação
+                                        </div>
+                                        <p className="text-lg font-bold text-zinc-100 font-mono">
+                                            {formatDuration(selectedRepoDetails.compile_duration_seconds)}
+                                        </p>
+                                        <p className="text-[11px] text-zinc-500 mt-0.5">Do início ao fim da etapa de build.</p>
+                                    </div>
+                                    <div className="bg-zinc-800/60 border border-zinc-700/60 rounded-lg p-3">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <Clock className="h-3.5 w-3.5 text-amber-400" /> Tempo de testagem
+                                        </div>
+                                        <p className="text-lg font-bold text-zinc-100 font-mono">
+                                            {formatDuration(selectedRepoDetails.test_duration_seconds)}
+                                        </p>
+                                        <p className="text-[11px] text-zinc-500 mt-0.5">Do início ao fim da etapa de testes.</p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <TestTube2 className="h-3.5 w-3.5 text-indigo-400" /> Frameworks de teste
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {splitTags(selectedRepoDetails.test_frameworks).length > 0 ? (
+                                                splitTags(selectedRepoDetails.test_frameworks).map((tag) => (
+                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-zinc-500 text-xs">Nenhum detectado</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <Code2 className="h-3.5 w-3.5 text-indigo-400" /> Bibliotecas de mock
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {splitTags(selectedRepoDetails.mock_libraries).length > 0 ? (
+                                                splitTags(selectedRepoDetails.mock_libraries).map((tag) => (
+                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Bibliotecas de asserção
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {splitTags(selectedRepoDetails.assertion_libraries).length > 0 ? (
+                                                splitTags(selectedRepoDetails.assertion_libraries).map((tag) => (
+                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <Layers3 className="h-3.5 w-3.5 text-indigo-400" /> Ferramentas de teste de integração
+                                        </div>
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {splitTags(selectedRepoDetails.integration_test_tools).length > 0 ? (
+                                                splitTags(selectedRepoDetails.integration_test_tools).map((tag) => (
+                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                        {tag}
+                                                    </span>
+                                                ))
+                                            ) : (
+                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {selectedRepoDetails.error_message && (
+                                    <div>
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                            <Terminal className="h-3.5 w-3.5 text-rose-400" /> Logs de erro
+                                        </div>
+                                        <div className="p-3 font-mono text-xs text-rose-300 bg-zinc-950 border border-zinc-800 rounded-lg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
+                                            {selectedRepoDetails.error_message}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

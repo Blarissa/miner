@@ -5,6 +5,12 @@ export interface AnalyzedRepo {
     effective_java_version: string;
     build: string;
     test_framework: string;
+    test_frameworks?: string;
+    mock_libraries?: string;
+    assertion_libraries?: string;
+    integration_test_tools?: string;
+    compile_duration_seconds?: number | null;
+    test_duration_seconds?: number | null;
     analyzed: boolean;
     compiled: boolean;
     has_tests: boolean;
@@ -36,6 +42,14 @@ export interface RateStat {
     success_rate: number;
 }
 
+export interface DurationStat {
+    count: number;
+    total_seconds: number;
+    average_seconds: number;
+    min_seconds: number;
+    max_seconds: number;
+}
+
 export interface RepositoryStatistics {
     scope: StatisticsScope;
     total: number;
@@ -59,6 +73,17 @@ export interface RepositoryStatistics {
         accepted: number;
     };
     java_versions: CountPercentageStat[];
+    declared_java_versions?: CountPercentageStat[];
+    effective_java_versions?: CountPercentageStat[];
+    java_declared_effective_comparison?: CountPercentageStat[];
+    test_frameworks?: CountPercentageStat[];
+    mock_libraries?: CountPercentageStat[];
+    assertion_libraries?: CountPercentageStat[];
+    integration_test_tools?: CountPercentageStat[];
+    stage_durations?: {
+        compilation: DurationStat;
+        testing: DurationStat;
+    };
     test_repository_relation: {
         with_tests: number;
         without_tests: number;
@@ -121,6 +146,8 @@ export interface SearchRepositoriesResult {
 export interface SearchRepositoriesProgress {
     run_id: number;
     status: MiningRunStatus;
+    repositories?: AnalyzedRepo[];
+    statistics?: SearchRepositoriesResult["statistics"];
 }
 
 export interface SearchFormData {
