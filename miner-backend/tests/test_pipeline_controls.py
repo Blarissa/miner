@@ -45,6 +45,27 @@ from app.services.statistics import build_statistics
 
 
 class PipelineControlsTest(unittest.TestCase):
+    def test_corrupt_database_is_backed_up_and_recreated(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            original_path = database.DATABASE_PATH
+            database.DATABASE_PATH = Path(tmp) / "miner.db"
+            try:
+                database.DATABASE_PATH.write_bytes(b"not a sqlite database")
+
+                database.init_database()
+
+                backups = list(Path(tmp).glob("miner.db.corrupt-*"))
+                self.assertEqual(len(backups), 1)
+
+                with database.get_connection() as conn:
+                    row = conn.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'mining_runs'"
+                    ).fetchone()
+
+                self.assertIsNotNone(row)
+            finally:
+                database.DATABASE_PATH = original_path
+
     def test_code_search_keeps_repository_language_out_of_query(self) -> None:
         filters = filters_from_payload(
             {

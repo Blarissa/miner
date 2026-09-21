@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import sqlite3
 import os
+import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from app.core.config import settings
+
+log = logging.getLogger(__name__)
 
 
 def sqlite_path_from_url(value: str) -> Path:
@@ -102,13 +106,56 @@ def get_connection() -> sqlite3.Connection:
     conn = sqlite3.connect(DATABASE_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    try:
+        conn.execute("PRAGMA journal_mode = WAL")
+    except sqlite3.OperationalError as exc:
+        log.warning(
+            "SQLite WAL indisponivel para %s; usando journal_mode=DELETE. Erro original: %s",
+            DATABASE_PATH,
+            exc,
+        )
+        conn.execute("PRAGMA journal_mode = DELETE")
     conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
-def init_database() -> None:
+def is_database_corruption_error(exc: sqlite3.DatabaseError) -> bool:
+    message = str(exc).lower()
+    return (
+        "database disk image is malformed" in message
+        or "file is not a database" in message
+    )
+
+
+def backup_corrupt_database() -> list[Path]:
+    if not DATABASE_PATH.exists():
+        return []
+
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    backed_up: list[Path] = []
+    sidecar_paths = (
+        DATABASE_PATH,
+        DATABASE_PATH.with_name(f"{DATABASE_PATH.name}-wal"),
+        DATABASE_PATH.with_name(f"{DATABASE_PATH.name}-shm"),
+    )
+    for path in sidecar_paths:
+        if not path.exists():
+            continue
+
+        backup_path = path.with_name(f"{path.name}.corrupt-{timestamp}")
+        suffix = 1
+        while backup_path.exists():
+            backup_path = path.with_name(f"{path.name}.corrupt-{timestamp}-{suffix}")
+            suffix += 1
+
+        path.rename(backup_path)
+        backed_up.append(backup_path)
+
+    return backed_up
+
+
+def init_database_once() -> None:
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
     with get_connection() as conn:
         conn.executescript(schema)
@@ -151,3 +198,19 @@ def init_database() -> None:
         for column, statement in MINING_RUN_CANDIDATE_COLUMN_MIGRATIONS.items():
             if column not in candidate_columns:
                 conn.execute(statement)
+
+
+def init_database() -> None:
+    try:
+        init_database_once()
+    except sqlite3.DatabaseError as exc:
+        if not is_database_corruption_error(exc):
+            raise
+
+        backed_up = backup_corrupt_database()
+        log.error(
+            "Banco SQLite corrompido em %s; backups criados em %s. Recriando banco vazio.",
+            DATABASE_PATH,
+            ", ".join(str(path) for path in backed_up) or "nenhum arquivo",
+        )
+        init_database_once()

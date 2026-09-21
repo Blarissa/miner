@@ -70,13 +70,15 @@ function BarRow({ label, value, percentage }: { label: string; value: number; pe
 }
 
 function CountList({ items, emptyText }: { items: CountPercentageStat[]; emptyText: string }) {
-    if (items.length === 0) {
+    const visibleItems = items.filter((item) => item.value.trim().toLowerCase() !== "unknown");
+
+    if (visibleItems.length === 0) {
         return <p className="text-sm text-zinc-500">{emptyText}</p>;
     }
 
     return (
         <div className="space-y-3">
-            {items.map((item) => (
+            {visibleItems.map((item) => (
                 <BarRow
                     key={item.value}
                     label={item.value}
@@ -119,7 +121,7 @@ function DurationSummary({
     duration?: DurationStat;
 }) {
     if (!duration || duration.count === 0) {
-        return <p className="text-sm text-zinc-500">Sem tempos registrados.</p>;
+        return null;
     }
 
     return (
@@ -178,13 +180,18 @@ export default function StatisticsPage({
     const funnel = statistics.analysis_funnel;
     const summary = statistics.summary;
     const declaredJavaVersions = statistics.declared_java_versions ?? statistics.java_versions;
-    const effectiveJavaVersions = statistics.effective_java_versions ?? statistics.java_versions;
     const javaVersionComparison = statistics.java_declared_effective_comparison ?? [];
+    const hasJavaUpgrade = javaVersionComparison.some(
+        (item) => item.value.trim().toLowerCase() !== "mesma versao" && item.count > 0
+    );
     const testFrameworks = statistics.test_frameworks ?? [];
     const mockLibraries = statistics.mock_libraries ?? [];
     const assertionLibraries = statistics.assertion_libraries ?? [];
     const integrationTestTools = statistics.integration_test_tools ?? [];
     const stageDurations = statistics.stage_durations;
+    const hasCompilationDuration = Boolean(stageDurations?.compilation?.count);
+    const hasTestingDuration = Boolean(stageDurations?.testing?.count);
+    const hasAnyStageDuration = hasCompilationDuration || hasTestingDuration;
 
     const funnelItems = [
         ["Pesquisados", funnel.searched],
@@ -212,6 +219,7 @@ export default function StatisticsPage({
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <SummaryCard label="Total no escopo" value={statistics.total} />
+                    <SummaryCard label="Total analisado" value={funnel.analyzed} />
                     {showEliminatedRepositoryStats && (
                         <>
                             <SummaryCard
@@ -254,13 +262,11 @@ export default function StatisticsPage({
                         <CountList items={declaredJavaVersions} emptyText="Sem versões Java declaradas no escopo." />
                     </Panel>
 
-                    <Panel title="Java efetivo" icon={<GitBranch className="h-4 w-4 text-indigo-400" />}>
-                        <CountList items={effectiveJavaVersions} emptyText="Sem versões Java efetivas no escopo." />
-                    </Panel>
-
-                    <Panel title="Java declarado x efetivo" icon={<BarChart3 className="h-4 w-4 text-indigo-400" />}>
-                        <CountList items={javaVersionComparison} emptyText="Sem comparação de versões no escopo." />
-                    </Panel>
+                    {hasJavaUpgrade && (
+                        <Panel title="Java declarado x efetivo" icon={<BarChart3 className="h-4 w-4 text-indigo-400" />}>
+                            <CountList items={javaVersionComparison} emptyText="Sem comparação de versões no escopo." />
+                        </Panel>
+                    )}
 
                     <Panel title="Frameworks de teste" icon={<TestTube2 className="h-4 w-4 text-indigo-400" />}>
                         <CountList items={testFrameworks} emptyText="Sem frameworks de teste no escopo." />
@@ -279,10 +285,18 @@ export default function StatisticsPage({
                     </Panel>
 
                     <Panel title="Tempo por etapa" icon={<GitBranch className="h-4 w-4 text-amber-400" />}>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <DurationSummary title="Compilação média" duration={stageDurations?.compilation} />
-                            <DurationSummary title="Testagem média" duration={stageDurations?.testing} />
-                        </div>
+                        {hasAnyStageDuration ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {hasCompilationDuration && (
+                                    <DurationSummary title="Compilação média" duration={stageDurations?.compilation} />
+                                )}
+                                {hasTestingDuration && (
+                                    <DurationSummary title="Testagem média" duration={stageDurations?.testing} />
+                                )}
+                            </div>
+                        ) : (
+                            <p className="text-sm text-zinc-500">Sem tempos registrados.</p>
+                        )}
                     </Panel>
 
                     {showEliminatedRepositoryStats && (
