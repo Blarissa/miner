@@ -23,7 +23,6 @@ import {
 } from "lucide-react";
 import {
     cancelRepositoryRun,
-    getHealth,
     getRepositoryRun,
     getRunRepositories,
     getRunStatistics,
@@ -213,7 +212,6 @@ export default function MiningDashboard({
     const [lastTotal, setLastTotal] = useState<number>(0);
     const [lastRunIncludedTests, setLastRunIncludedTests] = useState<boolean>(false);
     const [runStatus, setRunStatus] = useState<MiningRunStatus | null>(null);
-    const [apiOnline, setApiOnline] = useState<boolean | null>(null);
     const [selectedRepoDetails, setSelectedRepoDetails] = useState<AnalyzedRepo | null>(null);
 
     const [searchTerm, setSearchTerm] = useState<string>("");
@@ -305,20 +303,6 @@ export default function MiningDashboard({
         onEliminatedRepositoryStatsVisibilityChange(persistedEliminatedRepositories);
         onStatisticsChange(result.statistics);
     }, [onEliminatedRepositoryStatsVisibilityChange, onStatisticsChange]);
-
-    useEffect(() => {
-        let active = true;
-        getHealth()
-            .then(() => {
-                if (active) setApiOnline(true);
-            })
-            .catch(() => {
-                if (active) setApiOnline(false);
-            });
-        return () => {
-            active = false;
-        };
-    }, []);
 
     const loadSavedRun = useCallback(async (runId: number) => {
         setLoading(true);
@@ -430,19 +414,6 @@ export default function MiningDashboard({
                         <p className="text-sm text-zinc-400 mt-1">
                             Pipeline automatizado de descoberta, build e validação de testes.
                         </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span
-                            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${
-                                apiOnline === false
-                                    ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
-                                    : apiOnline === true
-                                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                        : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
-                            }`}
-                        >
-                            API Status: {apiOnline === false ? "Offline" : apiOnline === true ? "Online" : "Verificando"}
-                        </span>
                     </div>
                 </header>
 

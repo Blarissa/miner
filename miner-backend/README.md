@@ -13,7 +13,7 @@ API em FastAPI para minerar repositórios Java no GitHub, aplicar filtros sobre 
 - Detecta versão Java, compilação, presença de testes e resultado dos testes.
 - Persiste execuções, filtros, repositórios, análises, estatísticas e cache em SQLite.
 - Executa mineração como job assíncrono com `run_id`.
-- Expõe documentação interativa com Scalar em `/scalar`.
+- Expõe documentação interativa (Swagger) em `/docs`.
 
 ## Estrutura
 
@@ -73,7 +73,6 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 
 Depois acesse:
 
-- Scalar: <http://127.0.0.1:8000/scalar>
 - Swagger/FastAPI: <http://127.0.0.1:8000/docs>
 - Health check: <http://127.0.0.1:8000/health>
 

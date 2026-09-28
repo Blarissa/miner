@@ -1,11 +1,22 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { BarChart3, Code2, History, PlayCircle } from 'lucide-react'
+import { BarChart3, BookOpen, Code2, History, PanelLeftClose, PanelLeftOpen, PlayCircle } from 'lucide-react'
 import MiningDashboard from './components/MiningDashboard'
 import StatisticsPage from './components/StatisticsPage'
+import DocumentationPage from './components/DocumentationPage'
 import type { RepositoryStatistics } from './models/types'
 
-type AppPage = 'home' | 'dashboard' | 'statistics'
+type AppPage = 'home' | 'dashboard' | 'statistics' | 'docs'
+
+const SIDEBAR_COLLAPSED_KEY = 'miner-front:sidebar-collapsed'
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
 
 function parseValidRunId(value: string): number | null {
   const parsedRunId = Number(value)
@@ -17,11 +28,13 @@ function parseValidRunId(value: string): number | null {
 
 function SidebarButton({
   active,
+  collapsed,
   icon,
   label,
   onClick,
 }: {
   active: boolean
+  collapsed: boolean
   icon: ReactNode
   label: string
   onClick: () => void
@@ -30,13 +43,15 @@ function SidebarButton({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full inline-flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold transition cursor-pointer ${active
+      title={collapsed ? label : undefined}
+      aria-label={label}
+      className={`w-full inline-flex items-center gap-3 rounded-lg py-2.5 text-sm font-semibold transition cursor-pointer ${collapsed ? 'lg:justify-center lg:px-0 px-3' : 'px-3'} ${active
         ? 'bg-indigo-500/15 text-indigo-200 border border-indigo-500/30'
         : 'text-zinc-400 border border-transparent hover:bg-zinc-800 hover:text-zinc-100'
         }`}
     >
-      {icon}
-      <span>{label}</span>
+      <span className="shrink-0">{icon}</span>
+      <span className={collapsed ? 'lg:hidden' : ''}>{label}</span>
     </button>
   )
 }
@@ -57,7 +72,7 @@ function HomePage({
   return (
     <div className="min-h-screen bg-zinc-900 text-zinc-200 p-6 sm:p-10 font-sans">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-5xl flex-col justify-center gap-8">
-        <header className="space-y-3">
+        <header className="display flex items-center gap-4">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/15">
             <Code2 className="h-6 w-6 text-indigo-300" />
           </div>
@@ -65,7 +80,7 @@ function HomePage({
             <h1 className="text-3xl font-bold tracking-tight text-zinc-50">
               Minerador Java
             </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-400">
+            <p className="max-w-2xl text-sm leading-6 text-zinc-400">
               Inicie uma nova mineração ou carregue uma execução antiga já salva no banco.
             </p>
           </div>
@@ -139,6 +154,15 @@ function App() {
   const [oldRunId, setOldRunId] = useState('')
   const [runToLoad, setRunToLoad] = useState<number | null>(null)
   const [loadRequestKey, setLoadRequestKey] = useState(0)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(readSidebarCollapsed)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed))
+    } catch {
+      // armazenamento indisponível: a preferência só vale nesta sessão
+    }
+  }, [sidebarCollapsed])
 
   const openNewSearch = () => {
     setRunToLoad(null)
@@ -169,6 +193,10 @@ function App() {
       )
     }
 
+    if (page === 'docs') {
+      return <DocumentationPage />
+    }
+
     if (page === 'statistics') {
       return (
         <StatisticsPage
@@ -191,35 +219,61 @@ function App() {
 
   return (
     <div className="min-h-screen bg-zinc-900 text-zinc-200 lg:flex">
-      <aside className="lg:sticky lg:top-0 lg:h-screen lg:w-72 border-b lg:border-b-0 lg:border-r border-zinc-800 bg-zinc-950/80 px-4 py-5">
-        <div className="flex items-center gap-3 px-2 pb-5 border-b border-zinc-800">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/15 border border-indigo-500/30">
+      <aside
+        className={`lg:sticky lg:top-0 lg:h-screen lg:shrink-0 border-b lg:border-b-0 lg:border-r border-zinc-800 bg-zinc-950/80 py-5 transition-[width] duration-200 ${sidebarCollapsed ? 'lg:w-20 px-4 lg:px-3' : 'lg:w-72 px-4'}`}
+      >
+        <div
+          className={`flex items-center gap-3 pb-5 border-b border-zinc-800 ${sidebarCollapsed ? 'px-2 lg:flex-col lg:px-0' : 'px-2'}`}
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/15 border border-indigo-500/30">
             <Code2 className="h-5 w-5 text-indigo-300" />
           </div>
-          <div>
+          <div className={`min-w-0 flex-1 ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
             <p className="text-sm font-bold text-zinc-100">Minerador Java</p>
             <p className="text-xs text-zinc-500">GitHub Repository Miner</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((value) => !value)}
+            title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            aria-label={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}
+            aria-expanded={!sidebarCollapsed}
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-800 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 cursor-pointer"
+          >
+            {sidebarCollapsed
+              ? <PanelLeftOpen className="h-4 w-4" />
+              : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
 
-        <nav className="mt-5 space-y-2">
+        <nav className={`mt-5 space-y-2 ${sidebarCollapsed ? 'hidden lg:block' : ''}`}>
           <SidebarButton
+            collapsed={sidebarCollapsed}
             active={page === 'home'}
             icon={<History className="h-4 w-4" />}
             label="Início"
             onClick={() => setPage('home')}
           />
           <SidebarButton
+            collapsed={sidebarCollapsed}
             active={page === 'dashboard'}
             icon={<Code2 className="h-4 w-4" />}
             label="Mineração"
             onClick={() => setPage('dashboard')}
           />
           <SidebarButton
+            collapsed={sidebarCollapsed}
             active={page === 'statistics'}
             icon={<BarChart3 className="h-4 w-4" />}
             label="Estatísticas"
             onClick={() => setPage('statistics')}
+          />
+          <SidebarButton
+            collapsed={sidebarCollapsed}
+            active={page === 'docs'}
+            icon={<BookOpen className="h-4 w-4" />}
+            label="Documentação"
+            onClick={() => setPage('docs')}
           />
         </nav>
       </aside>
