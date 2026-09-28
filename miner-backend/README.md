@@ -47,14 +47,6 @@ requirements.txt
 ## Configuração Do `.env`
 
 Crie ou edite o arquivo `.env` na raiz do `miner-backend`.
-
-Exemplo para Windows, usando o banco na própria pasta do projeto:
-
-```env
-CORS_ORIGINS=["http://localhost:5173"]
-DATABASE_URL="jdbc:sqlite:C:\Users\SEU_USUARIO\Desktop\projeto\miner-backend\minerador.db"
-```
-
 Exemplo para Windows, usando uma pasta fixa:
 
 ```env
@@ -64,7 +56,6 @@ DATABASE_URL="jdbc:sqlite:C:\sqlite\minerador.db"
 
 Variáveis principais:
 
-- `GITHUB_TOKEN`: token usado pelo backend quando a requisição não envia um token próprio.
 - `CORS_ORIGINS`: origens permitidas para o front. Em desenvolvimento, mantenha `http://localhost:5173`.
 - `DATABASE_URL`: caminho do SQLite. Aceita `jdbc:sqlite:C:\caminho\banco.db` ou `sqlite:///C:/caminho/banco.db`.
 
