@@ -48,7 +48,7 @@ interface MiningDashboardProps {
 const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     queries: ["mockito"],
     search_type: "code",
-    file_path: "pom.xml",
+    file_path: "",
     max_repos: 20,
     max_workers: 4,
     analyzer_workers: 4,
@@ -82,8 +82,8 @@ const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     template: "",
     good_first_issues: "",
     help_wanted_issues: "",
-    filename: "pom.xml",
-    extension: "xml",
+    filename: "",
+    extension: "",
     path: "",
     sort: "",
     order: "",
@@ -1205,8 +1205,11 @@ export default function MiningDashboard({
                                         Aceitação {Math.round((runStatus.acceptance_rate ?? 0) * 100)}%
                                     </span>
                                     {runStatus && !canResumeRun && Boolean(runStatus.exhausted) && (
-                                        <span className="text-xs text-amber-400">
-                                            Não é possível retomar: todas as páginas disponíveis no GitHub para essa busca já foram esgotadas.
+                                        <span className="inline-flex w-full items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-200">
+                                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+                                            <span>
+                                                Não é possível retomar esta busca. Todas as páginas disponíveis no GitHub para estes filtros já foram esgotadas. Para encontrar mais repositórios, inicie uma nova busca com outra query ou filtros diferentes.
+                                            </span>
                                         </span>
                                     )}
                                 </>

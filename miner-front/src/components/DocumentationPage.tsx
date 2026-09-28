@@ -362,9 +362,8 @@ const FIELDS: FieldDoc[] = [
         group: "Filtros avançados",
         qualifier: "filename:",
         appliesTo: "code",
-        defaultValue: "pom.xml",
         description:
-            "Procura apenas em arquivos com esse nome. Para projetos Maven, mantenha pom.xml: é nele que a plataforma encontra dependências e a versão Java.",
+            "Procura apenas em arquivos com esse nome. Para projetos Maven, use pom.xml quando quiser restringir a busca ao arquivo em que a plataforma encontra dependências e a versão Java.",
         examples: [{ value: "pom.xml", meaning: "somente arquivos pom.xml" }],
     },
     {
@@ -372,7 +371,6 @@ const FIELDS: FieldDoc[] = [
         group: "Filtros avançados",
         qualifier: "extension:",
         appliesTo: "code",
-        defaultValue: "xml",
         description: "Procura apenas em arquivos com essa extensão (sem o ponto).",
         examples: [{ value: "xml", meaning: "arquivos .xml" }],
     },
@@ -437,9 +435,9 @@ const FIELDS: FieldDoc[] = [
         defaultValue: "Code Search",
         description: (
             <>
-                <strong>Code Search</strong> procura o texto <em>dentro dos arquivos</em> (por
-                padrão, dentro do <Code>pom.xml</Code>) — ideal para encontrar projetos que usam
-                uma biblioteca específica. <strong>Repository Search</strong> procura nos{" "}
+                <strong>Code Search</strong> procura o texto <em>dentro dos arquivos</em>. Para
+                projetos Maven, normalmente faz sentido restringir a busca ao <Code>pom.xml</Code>,
+                mas os campos Arquivo e Extensão começam vazios. <strong>Repository Search</strong> procura nos{" "}
                 <em>metadados</em> do repositório (nome, descrição, README, tópicos) e é a única
                 que aceita filtros como estrelas, forks, datas e licença. Veja a tabela de
                 compatibilidade abaixo.
@@ -901,7 +899,7 @@ export default function DocumentationPage() {
                             juntos formam uma única string de busca. Campos vazios são ignorados; valores
                             com espaço são colocados entre aspas automaticamente.
                         </p>
-                        <p className="font-semibold text-zinc-100">Exemplo — Code Search (valores padrão):</p>
+                        <p className="font-semibold text-zinc-100">Exemplo — Code Search com arquivo e extensão preenchidos:</p>
                         <Pre>{"Query: mockito   Arquivo: pom.xml   Extensão: xml\n\n→  mockito filename:pom.xml extension:xml"}</Pre>
                         <p className="font-semibold text-zinc-100">Exemplo — Repository Search:</p>
                         <Pre>
