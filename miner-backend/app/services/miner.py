@@ -35,6 +35,14 @@ BACKOFF_JITTER_SECONDS = 0.25
 GITHUB_SEARCH_RESULT_LIMIT = 1000
 
 
+class GitHubAPIError(RuntimeError):
+    pass
+
+
+class GitHubAuthenticationError(GitHubAPIError):
+    pass
+
+
 class TokenRateLimiter:
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -197,6 +205,13 @@ def safe_get(
             cached_response = response_from_cache(cache_key, resp, cached, token)
             if cached_response is not None:
                 return cached_response
+
+            if resp.status_code == 401:
+                log.error("GitHub retornou 401 em %s: credencial ausente, invalida ou sem permissao.", resp.url)
+                raise GitHubAuthenticationError(
+                    "GitHub retornou 401. Informe um token valido no formulario e tente novamente. "
+                    "A busca de codigo do GitHub exige autenticacao."
+                )
 
             if resp.status_code in RETRYABLE_STATUS_CODES:
                 if not handle_rate_limit(resp, token, fallback_wait=max(int(delay), 1) * 60):
@@ -1028,6 +1043,34 @@ def mined_repo_to_analyzer_entry(
         "test_duration_seconds": metadata.get("test_duration_seconds"),
         "commit_sha": repo.commit_sha or metadata.get("commit_sha"),
     }
+
+
+def simple_mined_repo_from_candidate(candidate: RepoCandidate) -> MinedRepo:
+    metadata: dict[str, Any] = {
+        "description": candidate.description,
+        "language": candidate.language,
+        "stars": candidate.stars,
+        "stargazers_count": candidate.stars,
+        "forks": candidate.forks,
+        "open_issues": candidate.open_issues,
+        "topics": candidate.topics,
+        "default_branch": candidate.raw.get("default_branch"),
+        "created_at": format_github_date_to_br(candidate.raw.get("created_at")),
+        "updated_at": format_github_date_to_br(candidate.raw.get("updated_at")),
+        "pushed_at": format_github_date_to_br(candidate.raw.get("pushed_at")),
+        "last_push_at": format_github_date_to_br(candidate.raw.get("pushed_at")),
+    }
+    matched_path = candidate.raw.get("_matched_path")
+    if matched_path:
+        metadata["matched_file"] = matched_path
+
+    license_info = candidate.raw.get("license")
+    if isinstance(license_info, dict):
+        metadata["license"] = license_info.get("key")
+        metadata["license_key"] = license_info.get("key")
+        metadata["license_name"] = license_info.get("name")
+
+    return mined_repo_from_candidate(candidate, metadata)
 
 
 def analysis_error_entry(entry: dict[str, Any], exc: Exception) -> dict[str, Any]:

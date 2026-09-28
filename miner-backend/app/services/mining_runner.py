@@ -17,6 +17,7 @@ from app.services.miner import (
     fetch_mining_page,
     mine_candidates,
     normalize_java_version,
+    simple_mined_repo_from_candidate,
 )
 from app.services.persistence import (
     finish_mining_run,
@@ -155,6 +156,10 @@ def cached_results_fill_remaining_slots(
 
 def should_run_analyzer(payload: SearchRepositoriesRequest) -> bool:
     return payload.analyze or payload.require_buildable or payload.require_tests_passed
+
+
+def should_run_simple_github_search(payload: SearchRepositoriesRequest) -> bool:
+    return not should_run_analyzer(payload) and not payload.persist_eliminated_repositories
 
 
 def should_run_test_suite(payload: SearchRepositoriesRequest) -> bool:
@@ -557,6 +562,81 @@ def execute_mining_run(
                 return
             finish_mining_run(run_id)
             log.info("Run #%s | busca concluida | total_resposta=%s | tempo=%.1fs.", run_id, len(analyzed_results), time.perf_counter() - started_at)
+            return
+
+        if should_run_simple_github_search(payload):
+            log.info(
+                "Run #%s | busca simples GitHub API iniciada | limite=%s.",
+                run_id,
+                payload.max_repos,
+            )
+            cursor = MiningCursor.from_run(saved_run, resume=resume)
+            simple_batch_size = max(min(payload.max_repos, cursor.per_page), 1)
+            update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size, exhausted=False)
+            update_mining_run_progress(run_id, progress_stage="mining")
+            mining_page = fetch_mining_page(
+                token=token,
+                filters=filters,
+                page=cursor.page_cursor,
+                per_page=simple_batch_size,
+                delay=payload.delay,
+                seen_keys=cursor.seen_candidate_keys,
+                session=session,
+            )
+            limited_candidates = mining_page.candidates[: payload.max_repos]
+            repositories = [
+                mined_repo_to_dict(simple_mined_repo_from_candidate(candidate))
+                for _, candidate, _ in limited_candidates
+            ]
+            for _, candidate, _ in limited_candidates:
+                cursor.seen_candidate_keys.add(candidate_key(candidate))
+            cursor.last_processed_index = len(limited_candidates)
+            cursor.acceptance_rate = 1.0 if repositories else cursor.acceptance_rate
+            update_cursor_checkpoint(
+                run_id,
+                cursor,
+                batch_size=simple_batch_size,
+                exhausted=not mining_page.has_next_page,
+            )
+            update_mining_run_progress(
+                run_id,
+                progress_stage="building_statistics",
+                total_candidates=len(limited_candidates),
+                processed_repositories=len(repositories),
+                accepted_repositories=len(repositories),
+                eliminated_repositories=0,
+            )
+            response: dict[str, Any] = {
+                "run_id": run_id,
+                "total": len(repositories),
+                "repositories": repositories,
+            }
+            if payload.include_statistics:
+                log.info("Run #%s | calculando estatisticas.", run_id)
+                response["statistics"] = build_statistics(repositories, payload.statistics_scope)
+            log.info("Run #%s | persistencia iniciada.", run_id)
+            update_mining_run_progress(run_id, progress_stage="persisting")
+            persist_search_results(
+                run_id=run_id,
+                payload=payload,
+                raw_filters=payload.filters,
+                built_filters=filters,
+                repositories=repositories,
+                statistics=None,
+                run_test_suite=False,
+            )
+            save_statistics(run_id, response.get("statistics"))
+            log.info("Run #%s | persistencia concluida.", run_id)
+            if is_mining_run_cancelled(run_id):
+                log.info("Run #%s | cancelada antes de finalizar.", run_id)
+                return
+            finish_mining_run(run_id)
+            log.info(
+                "Run #%s | busca simples concluida | total_resposta=%s | tempo=%.1fs.",
+                run_id,
+                len(repositories),
+                time.perf_counter() - started_at,
+            )
             return
 
         log.info("Run #%s | mineracao incremental iniciada sem analyzer.", run_id)
