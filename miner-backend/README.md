@@ -1,21 +1,18 @@
 # Miner Backend
 
-API em FastAPI para minerar repositórios Java no GitHub, aplicar filtros sobre arquivos do projeto, analisar compilação/testes Maven e persistir os resultados em SQLite.
+API em FastAPI para minerar repositórios Java no GitHub, filtrar projetos Maven/Spring, executar análise de compilação e testes, calcular estatísticas e persistir os resultados em SQLite.
 
-## Funcionalidades
+## O Que O Backend Faz
 
-- Busca repositórios usando a GitHub REST API.
-- Suporta filtros por repositório ou por código.
-- Aplica regras de conteúdo com regex em arquivos como `pom.xml`.
-- Extrai automaticamente a versão Java de `pom.xml`.
-- Confirma uso de Spring no `pom.xml` e em imports de `src/main/java`.
-- Clona projetos Java e executa análise Maven.
-- Detecta versão Java, compilação, presença de testes e resultado dos testes.
-- Persiste execuções, filtros, repositórios, análises, estatísticas e cache em SQLite.
-- Executa mineração como job assíncrono com `run_id`.
-- Expõe documentação interativa (Swagger) em `/docs`.
+- Busca repositórios pela GitHub REST API usando filtros de código ou de repositório.
+- Lê arquivos como `pom.xml` para identificar versão Java, Maven, Spring e bibliotecas de teste.
+- Clona projetos Java e, quando solicitado, executa `mvn compile` e `mvn test`.
+- Resolve JDKs diferentes para análise, com opção de upgrade automático de versão.
+- Mantém execuções assíncronas identificadas por `run_id`.
+- Persiste execuções, filtros, candidatos, repositórios aceitos, eliminados, análises, cache e estatísticas em SQLite.
+- Expõe documentação interativa em `/docs`.
 
-## Estrutura
+## Estrutura Principal
 
 ```text
 app/
@@ -35,52 +32,151 @@ app/
     persistence.py
     persistence_policy.py
     statistics.py
+Dockerfile
+requirements.txt
 ```
 
-## Requisitos
+## Requisitos Para Rodar Localmente
 
-- Python 3.13 ou compatível com a `.venv` do projeto.
+- Python 3.13.
 - Git instalado e disponível no `PATH`.
 - Maven instalado e disponível no `PATH`, ou wrapper `mvnw` nos repositórios analisados.
-- JDK instalado. Por padrão, o analyzer usa o JDK da versão Java selecionada/detectada; o upgrade automático pode ser habilitado pelo usuário.
-- Token do GitHub para usar a API sem limite muito baixo.
+- JDK instalado para análise local. O Dockerfile já instala várias versões via SDKMAN.
+- Token do GitHub. A busca de código do GitHub exige autenticação.
 
-## Configuração
+## Configuração Do `.env`
 
-Crie ou edite o arquivo `.env` na raiz do `miner-backend`:
+Crie ou edite o arquivo `.env` na raiz do `miner-backend`.
+
+Exemplo para Windows, usando o banco na própria pasta do projeto:
 
 ```env
-GITHUB_TOKEN=seu_token_github
-DATABASE_URL=jdbc:sqlite:C:\sqlite\sqlite.db
+CORS_ORIGINS=["http://localhost:5173"]
+DATABASE_URL="jdbc:sqlite:C:\Users\SEU_USUARIO\Desktop\projeto\miner-backend\minerador.db"
+```
+
+Exemplo para Windows, usando uma pasta fixa:
+
+```env
+CORS_ORIGINS=["http://localhost:5173"]
+DATABASE_URL="jdbc:sqlite:C:\sqlite\minerador.db"
 ```
 
 Variáveis principais:
 
-- `GITHUB_TOKEN`: token usado quando o payload não envia `github_token`.
-- `DATABASE_URL`: caminho do SQLite. Aceita `jdbc:sqlite:C:\sqlite\sqlite.db` ou `sqlite:///C:/sqlite/sqlite.db`.
+- `GITHUB_TOKEN`: token usado pelo backend quando a requisição não envia um token próprio.
+- `CORS_ORIGINS`: origens permitidas para o front. Em desenvolvimento, mantenha `http://localhost:5173`.
+- `DATABASE_URL`: caminho do SQLite. Aceita `jdbc:sqlite:C:\caminho\banco.db` ou `sqlite:///C:/caminho/banco.db`.
 
-Ao executar o backend no WSL, um caminho Windows configurado no `DATABASE_URL` e
-convertido automaticamente para o filesystem nativo do WSL em
-`~/.miner-backend/`. Isso evita erros de I/O do SQLite ao usar WAL em `/mnt/c`.
+O schema é inicializado automaticamente a partir de `app/core/database.sql` quando a API sobe. Se o banco já existir, o backend também aplica migrações simples para colunas novas.
 
-Valores padrão ficam em [app/core/config.py](app/core/config.py).
+## Banco De Dados No Windows
 
-## Como Rodar
+No Windows, deixe explícito onde o arquivo SQLite vai ficar. Se usar o banco na raiz do projeto, rode este comando no PowerShell dentro de `miner-backend`:
+
+```powershell
+New-Item -ItemType File -Path .\minerador.db -Force
+```
+
+Se preferir usar `C:\sqlite\minerador.db`, crie a pasta e o arquivo assim:
+
+```powershell
+New-Item -ItemType Directory -Path C:\sqlite -Force
+New-Item -ItemType File -Path C:\sqlite\minerador.db -Force
+```
+
+Depois ajuste o `.env` para apontar para o mesmo caminho:
+
+```env
+DATABASE_URL="jdbc:sqlite:C:\sqlite\minerador.db"
+```
+
+Observações importantes:
+
+- O SQLite não precisa de servidor separado.
+- O arquivo pode ser criado manualmente com os comandos acima, mas as tabelas são criadas pelo backend ao iniciar.
+- Não use o mesmo arquivo de banco simultaneamente em dois processos diferentes se estiver fazendo mineração pesada.
+- Ao rodar no WSL, caminhos Windows em `DATABASE_URL` são convertidos automaticamente para `~/.miner-backend/` para evitar problemas de I/O do SQLite em `/mnt/c`.
+
+## Execução Local No Windows
+
+Entre na pasta do backend:
+
+```powershell
+cd C:\Users\SEU_USUARIO\Desktop\projeto\miner-backend
+```
+
+Crie e ative o ambiente virtual, se ainda não existir:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Instale as dependências:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Garanta que o banco informado no `.env` existe:
+
+```powershell
+New-Item -ItemType File -Path .\minerador.db -Force
+```
+
+Suba a API:
 
 ```powershell
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Depois acesse:
+Acesse:
 
 - Swagger/FastAPI: <http://127.0.0.1:8000/docs>
 - Health check: <http://127.0.0.1:8000/health>
+
+## Execução Com Docker
+
+O projeto possui `Dockerfile`. Ele usa `python:3.13-slim`, instala Git, Maven e várias versões de Java via SDKMAN, e expõe a API na porta interna `10000`.
+
+Crie um arquivo separado para Docker, por exemplo `.env.docker`, porque o caminho do banco dentro do container é Linux:
+
+```env
+CORS_ORIGINS=["http://localhost:5173"]
+DATABASE_URL=sqlite:////app/data/minerador.db
+```
+
+Monte uma pasta local para persistir o banco fora do container:
+
+```powershell
+New-Item -ItemType Directory -Path .\data -Force
+```
+
+Construa a imagem:
+
+```powershell
+docker build -t miner-backend .
+```
+
+Execute o container mapeando a porta local `8000` para a porta interna `10000`:
+
+```powershell
+docker run --rm --env-file .env.docker -p 8000:10000 -v ${PWD}\data:/app/data miner-backend
+```
+
+Depois acesse:
+
+- API: <http://127.0.0.1:8000>
+- Swagger/FastAPI: <http://127.0.0.1:8000/docs>
+
+Se o front estiver rodando em outro endereço, atualize `CORS_ORIGINS` no `.env.docker`.
 
 ## Fluxo Assíncrono
 
 O endpoint `POST /repositories/search` cria uma execução e retorna imediatamente um `run_id`.
 
-### 1. Criar uma mineração
+### 1. Criar Uma Mineração
 
 ```http
 POST /repositories/search
@@ -148,36 +244,10 @@ Resposta:
 }
 ```
 
-### 2. Consultar status
+### 2. Consultar Status
 
 ```http
 GET /repositories/runs/{run_id}
-```
-
-Exemplo de resposta:
-
-```json
-{
-  "id": 1,
-  "status": "running",
-  "progress_stage": "mining",
-  "total_candidates": 0,
-  "processed_repositories": 0,
-  "accepted_repositories": 0,
-  "eliminated_repositories": 0,
-  "statistics_scope": "accepted",
-  "include_statistics": 1,
-  "require_buildable": 0,
-  "require_tests_passed": 0,
-  "persist_eliminated_repositories": 0,
-  "max_repos": 5,
-  "max_workers": 3,
-  "analyzer_workers": 2,
-  "delay_seconds": 0.0,
-  "started_at": "2026-09-01 12:00:00",
-  "finished_at": null,
-  "error_message": null
-}
 ```
 
 Status esperados:
@@ -186,8 +256,9 @@ Status esperados:
 - `running`: job em execução.
 - `completed`: job finalizado com sucesso.
 - `failed`: job falhou.
+- `cancelled`: job cancelado.
 
-Estágios esperados:
+Estágios comuns:
 
 - `queued`
 - `mining`
@@ -198,52 +269,23 @@ Estágios esperados:
 - `completed`
 - `failed`
 
-### 3. Consultar repositórios do run
+### 3. Consultar Repositórios Do Run
 
 ```http
 GET /repositories/runs/{run_id}/repositories
 ```
 
-Retorna os repositórios já persistidos para a execução.
-
-### 4. Consultar estatísticas do run
+### 4. Consultar Estatísticas Do Run
 
 ```http
 GET /repositories/runs/{run_id}/statistics
 ```
 
-Retorna as estatísticas persistidas, quando existirem.
-
-## Filtrar Repositórios em Memória
+### 5. Cancelar Ou Retomar Uma Execução
 
 ```http
-POST /repositories/filter
-```
-
-Exemplo:
-
-```json
-{
-  "repositories": [
-    {
-      "repo_name": "owner/project",
-      "repo_url": "https://github.com/owner/project",
-      "metadata": {
-        "java_version": "17"
-      },
-      "has_tests": true,
-      "tests_passed": true,
-      "eliminated": false
-    }
-  ],
-  "filters": {
-    "java_versions": ["17"],
-    "repo_name": "project",
-    "has_tests": true,
-    "tests_passed": true,
-    "eliminated": false
-  }
-}
+POST /repositories/runs/{run_id}/cancel
+POST /repositories/runs/{run_id}/resume
 ```
 
 ## Análise Maven
@@ -255,34 +297,10 @@ O analyzer:
 - clona ou atualiza o repositório;
 - confirma o commit analisado com `git rev-parse HEAD`;
 - localiza o `pom.xml` na raiz;
-- tenta resolver o JDK da versão Java selecionada/detectada;
+- tenta resolver o JDK da versão Java selecionada ou detectada;
 - executa `mvn compile -B -q -DskipTests`;
-- se solicitado, detecta testes apenas pela presença de arquivos `.java` em `src/test/java` e executa `mvn test -B`;
+- se solicitado, detecta testes pela presença de arquivos `.java` em `src/test/java` e executa `mvn test -B`;
 - marca o repositório como eliminado quando falha em clone, estrutura, JDK, compilação, ausência de testes ou testes.
-
-### Seleção de JDK durante a análise
-
-O upgrade automático de JDK é uma opção da análise, controlada por `allow_jdk_upgrade`.
-
-O analyzer registra duas versões:
-
-- `java_version`: versão declarada ou detectada no repositório.
-- `effective_java_version`: versão do JDK realmente usada na compilação/teste.
-
-Quando `allow_jdk_upgrade` está desativado, `effective_java_version` deve ser igual a `java_version`. Se o JDK correspondente não estiver disponível, ou se o `pom.xml` exigir uma versão maior que a selecionada, o repositório é eliminado na etapa `jdk_resolution`.
-
-Quando `allow_jdk_upgrade` está ativado, o analyzer pode usar o menor JDK superior disponível para conseguir iniciar o Maven, atender ao `pom.xml` ou reagir a uma falha que indique versão Java insuficiente. Nesse caso, o repositório pode ser considerado válido se compilar e, quando solicitado, passar nos testes com o JDK efetivo. A saída mantém as duas versões para deixar claro que a validade depende do ambiente adaptado.
-
-## Critérios Spring
-
-Durante a mineração, um candidato só é aceito quando:
-
-- o `pom.xml` indica uso de Spring, por exemplo por `org.springframework` ou artefatos `spring-*`;
-- pelo menos um arquivo `.java` em `src/main/java` contém import de `org.springframework`.
-
-Dependências de teste declaradas no `pom.xml` não são usadas para reconhecer testes. Para a análise com testes, é necessário existir pelo menos um arquivo `.java` dentro de `src/test/java`.
-
-A saída persistida inclui metadados úteis para auditoria e filtros futuros, incluindo branch padrão, commit SHA, licença, estrelas e data do último push.
 
 Os clones ficam em:
 
@@ -296,31 +314,29 @@ Os logs ficam em:
 app/services/logs/
 ```
 
-## Detecção de Versão Java
+## Seleção De JDK
 
-Quando o miner baixa um arquivo `pom.xml`, ele tenta preencher `metadata.java_version` automaticamente antes de chamar o analyzer.
+O upgrade automático de JDK é controlado por `allow_jdk_upgrade`.
 
-Campos procurados:
+O analyzer registra duas versões:
 
-- `maven.compiler.release`
-- `maven.compiler.source`
-- `maven.compiler.target`
-- `java.version`
-- `jdk.version`
-- `release`
-- `source`
-- `target`
+- `java_version`: versão declarada ou detectada no repositório.
+- `effective_java_version`: versão do JDK realmente usada na compilação/teste.
 
-Versões no formato antigo são normalizadas:
+Quando `allow_jdk_upgrade` está desativado, `effective_java_version` deve ser igual a `java_version`. Se o JDK correspondente não estiver disponível, ou se o `pom.xml` exigir uma versão maior que a selecionada, o repositório é eliminado em `jdk_resolution`.
 
-```text
-1.8 -> 8
-1.7 -> 7
-```
+Quando `allow_jdk_upgrade` está ativado, o analyzer pode usar o menor JDK superior disponível para conseguir iniciar o Maven, atender ao `pom.xml` ou reagir a uma falha que indique versão Java insuficiente.
 
-Se uma `content_rule` também extrair `java_version`, o valor da regra explícita tem prioridade sobre a detecção automática.
+## Critérios Spring E Testes
 
-## Cache de Análise
+Durante a mineração, um candidato só é aceito quando:
+
+- o `pom.xml` indica uso de Spring, por exemplo por `org.springframework` ou artefatos `spring-*`;
+- pelo menos um arquivo `.java` em `src/main/java` contém import de `org.springframework`.
+
+Dependências de teste declaradas no `pom.xml` não bastam para reconhecer testes. Para a análise com testes, é necessário existir pelo menos um arquivo `.java` dentro de `src/test/java`.
+
+## Cache De Análise
 
 O backend usa `analysis_cache` para evitar reanalisar o mesmo repositório no mesmo commit.
 
@@ -331,24 +347,6 @@ repository_id + commit_sha + run_test_suite
 ```
 
 Durante a mineração, o backend busca o SHA da branch padrão. Durante a análise, o analyzer confirma o `HEAD` real clonado. Se houver cache para o commit e modo de teste solicitados, o resultado é reaproveitado com `cache_hit: true`.
-
-## Banco de Dados
-
-O SQLite é inicializado automaticamente com o schema em:
-
-```text
-app/core/database.sql
-```
-
-Tabelas principais:
-
-- `mining_runs`
-- `search_filters`
-- `repositories`
-- `run_repositories`
-- `analysis_results`
-- `analysis_cache`
-- `run_statistics`
 
 ## Validação Local
 
