@@ -30,6 +30,7 @@ from app.services.persistence import (
     create_mining_run,
     get_analysis_cache,
     get_mining_run,
+    get_run_repositories,
     get_search_filters_for_run,
     is_mining_run_cancelled,
     persist_search_results,
@@ -37,10 +38,14 @@ from app.services.persistence import (
 )
 from app.services.mining_runner import (
     cached_results_fill_remaining_slots,
+    execute_mining_run,
     split_analyzable_repositories,
+    should_run_simple_github_search,
     should_stop_unproductive_search,
     unproductive_rejection_limit,
 )
+from app.services.miner import MiningPage
+from app.services.filters import filters_from_payload as build_search_filters
 from app.services.statistics import build_statistics
 
 
@@ -759,6 +764,78 @@ class PipelineControlsTest(unittest.TestCase):
                 self.assertEqual(resumed_payload.max_repos, 4)
                 self.assertEqual(len(resumed_payload.filters), 1)
                 self.assertEqual(resumed_payload.filters[0].content_rules[0].field_name, "java_version")
+            finally:
+                database.DATABASE_PATH = original_path
+
+    def test_simple_search_with_no_checkboxes_paginates_until_max_repos(self) -> None:
+        # Quando nenhum checkbox do front (buildavel, testes aprovados, salvar
+        # eliminados) esta marcado, a mineracao deve cair na busca simples do
+        # GitHub e retornar estritamente o limite pedido em max_repos, mesmo
+        # que isso exija buscar mais de uma pagina na API do GitHub.
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            original_path = database.DATABASE_PATH
+            database.DATABASE_PATH = Path(tmp) / "miner.db"
+            try:
+                payload = SearchRepositoriesRequest(
+                    max_repos=7,
+                    analyze=False,
+                    require_buildable=False,
+                    require_tests_passed=False,
+                    persist_eliminated_repositories=False,
+                    include_statistics=False,
+                    filters=[
+                        GitHubSearchFilterRequest(
+                            name="simple-filter",
+                            search_type="repositories",
+                            query="language:java",
+                        )
+                    ],
+                )
+
+                self.assertTrue(should_run_simple_github_search(payload))
+
+                built_filters = build_search_filters(payload.model_dump())
+                run_id = create_mining_run(payload, status="running")
+
+                def fake_fetch_mining_page(*, token, filters, page, per_page, delay, seen_keys, session=None):
+                    # Simula paginas pequenas da API do GitHub (3 itens por
+                    # pagina), que exigem mais de uma chamada para atingir
+                    # max_repos=7.
+                    page_items = [
+                        RepoCandidate(
+                            full_name=f"owner/repo-{page}-{i}",
+                            html_url=f"https://github.com/owner/repo-{page}-{i}",
+                            source_filter="simple-filter",
+                        )
+                        for i in range(3)
+                    ]
+                    candidates = [
+                        (index, candidate, filters[0])
+                        for index, candidate in enumerate(page_items)
+                    ]
+                    has_next_page = page < 5
+                    return MiningPage(candidates=candidates, total_count=15, has_next_page=has_next_page)
+
+                with patch("app.services.mining_runner.build_session", return_value=Mock()):
+                    with patch(
+                        "app.services.mining_runner.fetch_mining_page",
+                        side_effect=fake_fetch_mining_page,
+                    ):
+                        execute_mining_run(
+                            run_id=run_id,
+                            payload=payload,
+                            token="fake-token",
+                            filters=built_filters,
+                            resume=False,
+                        )
+
+                run = get_mining_run(run_id)
+                repositories = get_run_repositories(run_id)
+
+                self.assertEqual(run["status"], "completed")  # type: ignore[index]
+                self.assertEqual(len(repositories), payload.max_repos)
+                unique_names = {repo["repo_name"] for repo in repositories}
+                self.assertEqual(len(unique_names), payload.max_repos)
             finally:
                 database.DATABASE_PATH = original_path
 

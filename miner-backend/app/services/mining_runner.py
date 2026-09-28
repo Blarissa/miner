@@ -573,38 +573,83 @@ def execute_mining_run(
             cursor = MiningCursor.from_run(saved_run, resume=resume)
             simple_batch_size = max(min(payload.max_repos, cursor.per_page), 1)
             update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size, exhausted=False)
-            update_mining_run_progress(run_id, progress_stage="mining")
-            mining_page = fetch_mining_page(
-                token=token,
-                filters=filters,
-                page=cursor.page_cursor,
-                per_page=simple_batch_size,
-                delay=payload.delay,
-                seen_keys=cursor.seen_candidate_keys,
-                session=session,
-            )
-            limited_candidates = mining_page.candidates[: payload.max_repos]
-            repositories = [
-                mined_repo_to_dict(simple_mined_repo_from_candidate(candidate))
-                for _, candidate, _ in limited_candidates
-            ]
-            for _, candidate, _ in limited_candidates:
-                cursor.seen_candidate_keys.add(candidate_key(candidate))
-            cursor.last_processed_index = len(limited_candidates)
-            cursor.acceptance_rate = 1.0 if repositories else cursor.acceptance_rate
-            update_cursor_checkpoint(
+
+            existing_simple_results = get_run_repositories(run_id) if resume else []
+            repositories: list[dict[str, Any]] = list(existing_simple_results)
+
+            while len(repositories) < payload.max_repos:
+                if is_run_cancelled(run_id, "cancelada antes de buscar nova pagina."):
+                    return
+                update_mining_run_progress(run_id, progress_stage="mining")
+                mining_page = fetch_mining_page(
+                    token=token,
+                    filters=filters,
+                    page=cursor.page_cursor,
+                    per_page=simple_batch_size,
+                    delay=payload.delay,
+                    seen_keys=cursor.seen_candidate_keys,
+                    session=session,
+                )
+                update_mining_run_progress(
+                    run_id,
+                    progress_stage="mined",
+                    total_candidates=cursor.total_seen_with_page(len(mining_page.candidates)),
+                )
+
+                if not mining_page.candidates:
+                    if mining_page.has_next_page:
+                        cursor.page_cursor += 1
+                        cursor.last_processed_index = 0
+                        update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size)
+                        continue
+                    update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size, exhausted=True)
+                    break
+
+                remaining_slots = payload.max_repos - len(repositories)
+                page_candidates = mining_page.candidates[:remaining_slots]
+                new_results = [
+                    mined_repo_to_dict(simple_mined_repo_from_candidate(candidate))
+                    for _, candidate, _ in page_candidates
+                ]
+                repositories.extend(new_results)
+                for _, candidate, _ in mining_page.candidates:
+                    cursor.seen_candidate_keys.add(candidate_key(candidate))
+
+                cursor.last_processed_index = len(page_candidates)
+                cursor.acceptance_rate = 1.0 if repositories else cursor.acceptance_rate
+                persist_search_results(
+                    run_id=run_id,
+                    payload=payload,
+                    raw_filters=payload.filters,
+                    built_filters=filters,
+                    repositories=new_results,
+                    statistics=None,
+                    run_test_suite=False,
+                )
+                update_mining_run_progress(
+                    run_id,
+                    progress_stage="building_statistics",
+                    total_candidates=len(cursor.seen_candidate_keys),
+                    processed_repositories=len(repositories),
+                    accepted_repositories=len(repositories),
+                    eliminated_repositories=0,
+                )
+
+                if len(repositories) >= payload.max_repos:
+                    update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size)
+                    break
+                if not mining_page.has_next_page:
+                    update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size, exhausted=True)
+                    break
+                cursor.page_cursor += 1
+                cursor.last_processed_index = 0
+                update_cursor_checkpoint(run_id, cursor, batch_size=simple_batch_size)
+
+            log.info(
+                "Run #%s | busca simples GitHub API | repositorios coletados=%s / limite=%s.",
                 run_id,
-                cursor,
-                batch_size=simple_batch_size,
-                exhausted=not mining_page.has_next_page,
-            )
-            update_mining_run_progress(
-                run_id,
-                progress_stage="building_statistics",
-                total_candidates=len(limited_candidates),
-                processed_repositories=len(repositories),
-                accepted_repositories=len(repositories),
-                eliminated_repositories=0,
+                len(repositories),
+                payload.max_repos,
             )
             response: dict[str, Any] = {
                 "run_id": run_id,
@@ -616,15 +661,6 @@ def execute_mining_run(
                 response["statistics"] = build_statistics(repositories, payload.statistics_scope)
             log.info("Run #%s | persistencia iniciada.", run_id)
             update_mining_run_progress(run_id, progress_stage="persisting")
-            persist_search_results(
-                run_id=run_id,
-                payload=payload,
-                raw_filters=payload.filters,
-                built_filters=filters,
-                repositories=repositories,
-                statistics=None,
-                run_test_suite=False,
-            )
             save_statistics(run_id, response.get("statistics"))
             log.info("Run #%s | persistencia concluida.", run_id)
             if is_mining_run_cancelled(run_id):
