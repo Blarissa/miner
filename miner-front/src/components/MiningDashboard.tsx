@@ -20,6 +20,8 @@ import {
     TestTube2,
     Layers3,
     Clock,
+    Hammer,
+    Lock,
 } from "lucide-react";
 import {
     cancelRepositoryRun,
@@ -36,6 +38,8 @@ import type {
     SearchFormData,
     SearchRepositoriesResult,
 } from "../models/types";
+import { Button, Card, Checkbox, FieldError, FieldLabel, Modal, Select, TextInput } from "./ui";
+import { progressStageLabel, runStatusLabel } from "../models/runLabels";
 
 interface MiningDashboardProps {
     initialRunId?: number | null;
@@ -258,8 +262,40 @@ export default function MiningDashboard({
         if (liveStats !== undefined) setStatistics(liveStats ?? null);
     }, [setStatistics]);
 
+    const [showValidation, setShowValidation] = useState<boolean>(false);
+
+    const formErrors = useMemo(() => {
+        const emptyQueryIndexes = formData.queries
+            .map((query, index) => (query.trim() === "" ? index : -1))
+            .filter((index) => index >= 0);
+        return {
+            emptyQueryIndexes,
+            githubToken: formData.github_token.trim() === "",
+            searchType: !formData.search_type,
+            maxRepos: !Number.isInteger(formData.max_repos) || formData.max_repos < 1,
+        };
+    }, [formData.queries, formData.github_token, formData.search_type, formData.max_repos]);
+
+    const hasFormErrors =
+        formErrors.emptyQueryIndexes.length > 0 ||
+        formErrors.githubToken ||
+        formErrors.searchType ||
+        formErrors.maxRepos;
+
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
+        setShowValidation(true);
+        if (hasFormErrors) {
+            const firstInvalidId = formErrors.emptyQueryIndexes.length > 0
+                ? `field-query-${formErrors.emptyQueryIndexes[0]}`
+                : formErrors.githubToken
+                    ? "field-github-token"
+                    : formErrors.searchType
+                        ? "field-search-type"
+                        : "field-max-repos";
+            document.getElementById(firstInvalidId)?.focus();
+            return;
+        }
         setLoading(true);
         setErrorBanner(null);
         try {
@@ -306,6 +342,7 @@ export default function MiningDashboard({
 
     const loadSavedRun = useCallback(async (runId: number) => {
         setLoading(true);
+        setErrorBanner(null);
 
         try {
             setRepositories([]);
@@ -324,7 +361,7 @@ export default function MiningDashboard({
             onStatisticsChange(statisticsResponse);
         } catch (error: unknown) {
             console.error("Erro ao carregar consulta antiga:", error);
-            alert(`Falha ao carregar consulta antiga: ${errorMessage(error)}`);
+            setErrorBanner(`Falha ao carregar consulta antiga: ${errorMessage(error)}`);
         } finally {
             setLoading(false);
         }
@@ -380,13 +417,14 @@ export default function MiningDashboard({
     const handleCancelRun = async () => {
         if (lastRunId === null) return;
 
+        setErrorBanner(null);
         try {
             const status = await cancelRepositoryRun(lastRunId);
             setRunStatus(status);
             setLoading(false);
         } catch (error: unknown) {
             console.error("Erro ao cancelar consulta:", error);
-            alert(`Falha ao cancelar consulta: ${errorMessage(error)}`);
+            setErrorBanner(`Falha ao cancelar consulta: ${errorMessage(error)}`);
         }
     };
 
@@ -401,17 +439,17 @@ export default function MiningDashboard({
     }, [repositories]);
 
     return (
-        <div className="min-h-screen bg-zinc-900 text-zinc-200 p-6 sm:p-10 font-sans">
+        <div className="min-h-screen bg-slate-950 text-slate-200 p-6 sm:p-10 font-sans">
             <div className="max-w-7xl mx-auto space-y-7">
 
                 {/* Cabeçalho */}
-                <header className="flex items-center justify-between border-b border-zinc-800 pb-5">
+                <header className="flex items-center justify-between border-b border-slate-800 pb-5">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-zinc-50 flex items-center gap-2.5">
-                            <Code2 className="h-7 w-7 text-indigo-400" />
-                            Minerador & Analisador de Repositórios Java
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-50 flex items-center gap-2.5">
+                            <Hammer className="h-7 w-7 text-cyan-400" />
+                            Mineração
                         </h1>
-                        <p className="text-sm text-zinc-400 mt-1">
+                        <p className="text-sm text-slate-400 mt-1">
                             Pipeline automatizado de descoberta, build e validação de testes.
                         </p>
                     </div>
@@ -419,7 +457,7 @@ export default function MiningDashboard({
 
                 {/* Banner de Erro */}
                 {errorBanner && (
-                    <div className="flex items-start justify-between gap-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+                    <div role="alert" className="flex items-start justify-between gap-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                         <div className="flex items-start gap-2">
                             <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
                             <span>{errorBanner}</span>
@@ -427,7 +465,8 @@ export default function MiningDashboard({
                         <button
                             type="button"
                             onClick={() => setErrorBanner(null)}
-                            className="shrink-0 text-rose-300 hover:text-rose-100 text-xs font-semibold"
+                            aria-label="Fechar aviso de erro"
+                            className="shrink-0 text-rose-300 hover:text-rose-100 text-xs font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 rounded"
                         >
                             Fechar
                         </button>
@@ -435,18 +474,18 @@ export default function MiningDashboard({
                 )}
 
                 {/* Formulário de Busca */}
-                <section className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-6 shadow-md">
-                    <form onSubmit={handleSearch} className="space-y-4">
+                <section className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-6 shadow-md">
+                    <form onSubmit={handleSearch} noValidate className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div className="md:col-span-2">
                                 <div className="flex items-center justify-between gap-3 mb-1.5">
-                                    <label className="block text-xs font-semibold text-zinc-300">
+                                    <FieldLabel htmlFor="field-query-0" required className="">
                                         Queries de Busca no GitHub
-                                    </label>
+                                    </FieldLabel>
                                     <button
                                         type="button"
                                         onClick={addQuery}
-                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-300 hover:text-indigo-200 transition"
+                                        className="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-300 hover:text-cyan-200 transition"
                                     >
                                         <Plus className="h-3.5 w-3.5" />
                                         Adicionar query
@@ -455,15 +494,21 @@ export default function MiningDashboard({
                                 <div className="space-y-2">
                                     {formData.queries.map((query, index) => (
                                         <div key={index} className="flex items-center gap-2">
-                                            <div className="relative flex-1">
-                                                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-                                                <input
+                                            <div className="flex-1">
+                                                <TextInput
+                                                    id={`field-query-${index}`}
+                                                    icon={<Search />}
                                                     type="text"
                                                     value={query}
                                                     onChange={(e) => updateQuery(index, e.target.value)}
                                                     placeholder="Ex: mockito filename:pom.xml language:xml"
-                                                    required
-                                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition"
+                                                    aria-required="true"
+                                                    invalid={showValidation && formErrors.emptyQueryIndexes.includes(index)}
+                                                    aria-describedby={
+                                                        showValidation && formErrors.emptyQueryIndexes.includes(index)
+                                                            ? "field-queries-error"
+                                                            : undefined
+                                                    }
                                                 />
                                             </div>
                                             <button
@@ -471,35 +516,56 @@ export default function MiningDashboard({
                                                 onClick={() => removeQuery(index)}
                                                 disabled={formData.queries.length === 1}
                                                 title="Remover query"
-                                                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 bg-zinc-900 text-zinc-400 hover:text-rose-300 hover:border-rose-500/50 disabled:opacity-40 disabled:hover:text-zinc-400 disabled:hover:border-zinc-700 transition"
+                                                aria-label={`Remover query ${index + 1}`}
+                                                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-400 hover:text-rose-300 hover:border-rose-500/50 disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:border-slate-700 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
                                             >
                                                 <Trash2 className="h-4 w-4" />
                                             </button>
                                         </div>
                                     ))}
                                 </div>
+                                {showValidation && formErrors.emptyQueryIndexes.length > 0 && (
+                                    <FieldError id="field-queries-error">
+                                        Preencha a query destacada ou remova-a.
+                                    </FieldError>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <FieldLabel htmlFor="field-github-token" required>
                                     GitHub Token
-                                </label>
-                                <input
+                                </FieldLabel>
+                                <TextInput
+                                    id="field-github-token"
                                     type="password"
                                     value={formData.github_token}
                                     onChange={(e) => setFormData({ ...formData, github_token: e.target.value })}
                                     placeholder="ghp_..."
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition"
+                                    className="transition"
+                                    aria-required="true"
+                                    invalid={showValidation && formErrors.githubToken}
+                                    aria-describedby={
+                                        showValidation && formErrors.githubToken
+                                            ? "field-github-token-error field-github-token-hint"
+                                            : "field-github-token-hint"
+                                    }
                                 />
+                                {showValidation && formErrors.githubToken && (
+                                    <FieldError id="field-github-token-error">Informe o token do GitHub.</FieldError>
+                                )}
+                                <p id="field-github-token-hint" className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-400">
+                                    <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                                    <span>Usado só durante a execução. Não é salvo no banco de dados.</span>
+                                </p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-3 border-t border-zinc-700/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-3 border-t border-slate-700/50">
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Versão Java
                                 </label>
-                                <select
+                                <Select
                                     value={formData.java_version}
                                     onChange={(e) =>
                                         setFormData({
@@ -507,7 +573,6 @@ export default function MiningDashboard({
                                             java_version: e.target.value as SearchFormData["java_version"],
                                         })
                                     }
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="">Qualquer</option>
                                     <option value="6">Java 6</option>
@@ -516,71 +581,65 @@ export default function MiningDashboard({
                                     <option value="11">Java 11</option>
                                     <option value="17">Java 17</option>
                                     <option value="21">Java 21</option>
-                                </select>
+                                </Select>
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Stars
                                 </label>
-                                <input
+                                <TextInput
                                     type="text"
                                     value={formData.stars}
                                     onChange={(e) => setFormData({ ...formData, stars: e.target.value })}
                                     placeholder=">=100"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Forks
                                 </label>
-                                <input
+                                <TextInput
                                     type="text"
                                     value={formData.forks}
                                     onChange={(e) => setFormData({ ...formData, forks: e.target.value })}
                                     placeholder="10..50"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Tamanho
                                 </label>
-                                <input
+                                <TextInput
                                     type="text"
                                     value={formData.size}
                                     onChange={(e) => setFormData({ ...formData, size: e.target.value })}
                                     placeholder="<30000"
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                 />
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Criado desde
                                 </label>
-                                <div className="relative">
-                                    <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400 pointer-events-none" />
-                                    <input
-                                        type="date"
-                                        value={formData.created}
-                                        onChange={(e) => setFormData({ ...formData, created: e.target.value })}
-                                        className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
-                                    />
-                                </div>
+                                <TextInput
+                                    icon={<Calendar />}
+                                    type="date"
+                                    value={formData.created}
+                                    onChange={(e) => setFormData({ ...formData, created: e.target.value })}
+                                />
                             </div>
                         </div>
 
-                        <div className="border-t border-zinc-700/50 pt-3">
+                        <div className="border-t border-slate-700/50 pt-3">
                             <button
                                 type="button"
                                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
-                                className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-zinc-50 transition cursor-pointer"
+                                className="inline-flex items-center gap-2 text-xs font-semibold text-slate-300 hover:text-slate-50 transition cursor-pointer"
                             >
-                                <SlidersHorizontal className="h-4 w-4 text-indigo-400" />
+                                <SlidersHorizontal className="h-4 w-4 text-cyan-400" />
                                 Filtros avançados
                                 <ChevronDown
                                     className={`h-4 w-4 transition ${showAdvancedFilters ? "rotate-180" : ""}`}
@@ -590,51 +649,46 @@ export default function MiningDashboard({
                             {showAdvancedFilters && (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Último push desde
                                         </label>
-                                        <div className="relative">
-                                            <Calendar className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400 pointer-events-none" />
-                                            <input
-                                                type="date"
-                                                value={formData.pushed}
-                                                onChange={(e) => setFormData({ ...formData, pushed: e.target.value })}
-                                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-9 pr-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
-                                            />
-                                        </div>
+                                        <TextInput
+                                            icon={<Calendar />}
+                                            type="date"
+                                            value={formData.pushed}
+                                            onChange={(e) => setFormData({ ...formData, pushed: e.target.value })}
+                                        />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Tópico
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.topic}
                                             onChange={(e) => setFormData({ ...formData, topic: e.target.value })}
                                             placeholder="spring"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Licença
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.license}
                                             onChange={(e) => setFormData({ ...formData, license: e.target.value })}
                                             placeholder="mit"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Visibilidade
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.visibility}
                                             onChange={(e) =>
                                                 setFormData({
@@ -642,85 +696,79 @@ export default function MiningDashboard({
                                                     visibility: e.target.value as SearchFormData["visibility"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Qualquer</option>
                                             <option value="public">Público</option>
                                             <option value="private">Privado</option>
                                             <option value="internal">Interno</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Usuário
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.user}
                                             onChange={(e) => setFormData({ ...formData, user: e.target.value })}
                                             placeholder="octocat"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Organização
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.org}
                                             onChange={(e) => setFormData({ ...formData, org: e.target.value })}
                                             placeholder="github"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Repositório
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.repo}
                                             onChange={(e) => setFormData({ ...formData, repo: e.target.value })}
                                             placeholder="owner/name"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Seguidores
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.followers}
                                             onChange={(e) => setFormData({ ...formData, followers: e.target.value })}
                                             placeholder=">=100"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Quantidade de tópicos
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.topics}
                                             onChange={(e) => setFormData({ ...formData, topics: e.target.value })}
                                             placeholder=">=3"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Fork
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.fork}
                                             onChange={(e) =>
                                                 setFormData({
@@ -728,20 +776,19 @@ export default function MiningDashboard({
                                                     fork: e.target.value as SearchFormData["fork"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Qualquer</option>
                                             <option value="false">Não</option>
                                             <option value="true">Sim</option>
                                             <option value="only">Somente forks</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Arquivado
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.archived}
                                             onChange={(e) =>
                                                 setFormData({
@@ -749,19 +796,18 @@ export default function MiningDashboard({
                                                     archived: e.target.value as SearchFormData["archived"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Qualquer</option>
                                             <option value="false">Não</option>
                                             <option value="true">Sim</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Mirror
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.mirror}
                                             onChange={(e) =>
                                                 setFormData({
@@ -769,19 +815,18 @@ export default function MiningDashboard({
                                                     mirror: e.target.value as SearchFormData["mirror"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Qualquer</option>
                                             <option value="false">Não</option>
                                             <option value="true">Sim</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Template
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.template}
                                             onChange={(e) =>
                                                 setFormData({
@@ -789,101 +834,94 @@ export default function MiningDashboard({
                                                     template: e.target.value as SearchFormData["template"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Qualquer</option>
                                             <option value="false">Não</option>
                                             <option value="true">Sim</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Good first issues
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.good_first_issues}
                                             onChange={(e) =>
                                                 setFormData({ ...formData, good_first_issues: e.target.value })
                                             }
                                             placeholder=">=2"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Help wanted issues
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.help_wanted_issues}
                                             onChange={(e) =>
                                                 setFormData({ ...formData, help_wanted_issues: e.target.value })
                                             }
                                             placeholder=">=2"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Arquivo
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.filename}
                                             onChange={(e) => setFormData({ ...formData, filename: e.target.value })}
                                             placeholder="pom.xml"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Extensão
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.extension}
                                             onChange={(e) => setFormData({ ...formData, extension: e.target.value })}
                                             placeholder="xml"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Caminho
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.path}
                                             onChange={(e) => setFormData({ ...formData, path: e.target.value })}
                                             placeholder="src/main"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Ordenar por
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="text"
                                             value={formData.sort}
                                             onChange={(e) => setFormData({ ...formData, sort: e.target.value })}
                                             placeholder="stars"
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Direção
                                         </label>
-                                        <select
+                                        <Select
                                             value={formData.order}
                                             onChange={(e) =>
                                                 setFormData({
@@ -891,43 +929,39 @@ export default function MiningDashboard({
                                                     order: e.target.value as SearchFormData["order"],
                                                 })
                                             }
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         >
                                             <option value="">Padrão</option>
                                             <option value="desc">Desc</option>
                                             <option value="asc">Asc</option>
-                                        </select>
+                                        </Select>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                        <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Itens por página
                                         </label>
-                                        <input
+                                        <TextInput
                                             type="number"
                                             min={1}
                                             max={100}
                                             value={formData.per_page}
                                             onChange={(e) => setFormData({ ...formData, per_page: Number(e.target.value) })}
-                                            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                         />
                                     </div>
 
                                     <div className="sm:col-span-2 lg:col-span-4">
-                                        <span className="block text-xs font-semibold text-zinc-300 mb-2">
+                                        <span className="block text-xs font-semibold text-slate-300 mb-2">
                                             Buscar em
                                         </span>
-                                        <div className="flex flex-wrap gap-3 text-sm text-zinc-300">
+                                        <div className="flex flex-wrap gap-3 text-sm text-slate-300">
                                             {(["name", "description", "readme", "topics"] as const).map((value) => (
-                                                <label key={value} className="flex items-center gap-2 cursor-pointer">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={formData.search_in.includes(value)}
-                                                        onChange={() => toggleSearchIn(value)}
-                                                        className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                                    />
-                                                    {value}
-                                                </label>
+                                                <Checkbox
+                                                    key={value}
+                                                    labelClassName="flex items-center gap-2 cursor-pointer"
+                                                    checked={formData.search_in.includes(value)}
+                                                    onChange={() => toggleSearchIn(value)}
+                                                    label={value}
+                                                />
                                             ))}
                                         </div>
                                     </div>
@@ -935,41 +969,53 @@ export default function MiningDashboard({
                             )}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-3 border-t border-zinc-700/50">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-3 border-t border-slate-700/50">
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <FieldLabel htmlFor="field-search-type" required>
                                     Tipo de Busca
-                                </label>
-                                <select
+                                </FieldLabel>
+                                <Select
+                                    id="field-search-type"
+                                    aria-required="true"
+                                    invalid={showValidation && formErrors.searchType}
+                                    aria-describedby={showValidation && formErrors.searchType ? "field-search-type-error" : undefined}
                                     value={formData.search_type}
                                     onChange={(e) =>
                                         setFormData({ ...formData, search_type: e.target.value as "code" | "repositories" })
                                     }
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="code">Code Search (busca no pom.xml)</option>
                                     <option value="repositories">Repository Search</option>
-                                </select>
+                                </Select>
+                                {showValidation && formErrors.searchType && (
+                                    <FieldError id="field-search-type-error">Selecione o tipo de busca.</FieldError>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <FieldLabel htmlFor="field-max-repos" required>
                                     Limite de Repositórios
-                                </label>
-                                <input
+                                </FieldLabel>
+                                <TextInput
+                                    id="field-max-repos"
                                     type="number"
                                     min={1}
                                     value={formData.max_repos}
                                     onChange={(e) => setFormData({ ...formData, max_repos: Number(e.target.value) })}
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
+                                    aria-required="true"
+                                    invalid={showValidation && formErrors.maxRepos}
+                                    aria-describedby={showValidation && formErrors.maxRepos ? "field-max-repos-error" : undefined}
                                 />
+                                {showValidation && formErrors.maxRepos && (
+                                    <FieldError id="field-max-repos-error">Informe um número inteiro maior que zero.</FieldError>
+                                )}
                             </div>
 
                             <div>
-                                <label className="block text-xs font-semibold text-zinc-300 mb-1.5">
+                                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                     Estatísticas
                                 </label>
-                                <select
+                                <Select
                                     value={formData.statistics_scope}
                                     onChange={(e) =>
                                         setFormData({
@@ -977,132 +1023,117 @@ export default function MiningDashboard({
                                             statistics_scope: e.target.value as SearchFormData["statistics_scope"],
                                         })
                                     }
-                                    className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="accepted">Aceitos</option>
                                     <option value="all">Todos filtrados</option>
                                     <option value="eliminated">Eliminados</option>
-                                </select>
+                                </Select>
                             </div>
 
                             <div className="sm:col-span-2 lg:col-span-3 flex flex-wrap items-end justify-between gap-4">
                                 <div className="space-y-2 pb-1">
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-300 font-medium">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.require_buildable}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    require_buildable: e.target.checked,
-                                                    require_tests_passed: e.target.checked
-                                                        ? formData.require_tests_passed
-                                                        : false,
-                                                })
-                                            }
-                                            className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                        />
-                                        Apenas repositórios buildáveis
-                                    </label>
+                                    <Checkbox
+                                        checked={formData.require_buildable}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                require_buildable: e.target.checked,
+                                                require_tests_passed: e.target.checked
+                                                    ? formData.require_tests_passed
+                                                    : false,
+                                            })
+                                        }
+                                        label="Apenas repositórios buildáveis"
+                                    />
 
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-300 font-medium">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.require_tests_passed}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    require_tests_passed: e.target.checked,
-                                                    require_buildable: e.target.checked
-                                                        ? true
-                                                        : formData.require_buildable,
-                                                })
-                                            }
-                                            className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                        />
-                                        Apenas com testes aprovados
-                                    </label>
+                                    <Checkbox
+                                        checked={formData.require_tests_passed}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                require_tests_passed: e.target.checked,
+                                                require_buildable: e.target.checked
+                                                    ? true
+                                                    : formData.require_buildable,
+                                            })
+                                        }
+                                        label="Apenas com testes aprovados"
+                                    />
 
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-300 font-medium">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.persist_eliminated_repositories}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    persist_eliminated_repositories: e.target.checked,
-                                                })
-                                            }
-                                            className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                        />
-                                        Salvar repositórios eliminados
-                                    </label>
+                                    <Checkbox
+                                        checked={formData.persist_eliminated_repositories}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                persist_eliminated_repositories: e.target.checked,
+                                            })
+                                        }
+                                        label="Salvar repositórios eliminados"
+                                    />
 
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-300 font-medium">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.allow_jdk_upgrade}
-                                            disabled={!analyzerWillRun}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    allow_jdk_upgrade: e.target.checked,
-                                                })
-                                            }
-                                            className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500 disabled:opacity-50"
-                                        />
-                                        Permitir upgrade automático do JDK
-                                    </label>
+                                    <Checkbox
+                                        checked={formData.allow_jdk_upgrade}
+                                        disabled={!analyzerWillRun}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                allow_jdk_upgrade: e.target.checked,
+                                            })
+                                        }
+                                        label="Permitir upgrade automático do JDK"
+                                    />
 
-                                    <label className="flex items-center gap-2 cursor-pointer text-sm text-zinc-300 font-medium">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.include_statistics}
-                                            onChange={(e) =>
-                                                setFormData({
-                                                    ...formData,
-                                                    include_statistics: e.target.checked,
-                                                })
-                                            }
-                                            className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                        />
-                                        Retornar estatísticas
-                                    </label>
+                                    <Checkbox
+                                        checked={formData.include_statistics}
+                                        onChange={(e) =>
+                                            setFormData({
+                                                ...formData,
+                                                include_statistics: e.target.checked,
+                                            })
+                                        }
+                                        label="Retornar estatísticas"
+                                    />
                                 </div>
 
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2 rounded-lg font-semibold text-sm transition disabled:opacity-50 cursor-pointer shadow-md"
-                                >
-                                    {loading ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 animate-spin" /> Minerando...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Play className="h-4 w-4 fill-current" /> Iniciar Mineração
-                                        </>
-                                    )}
-                                </button>
+                                <div className="flex flex-col items-end gap-2">
+                                    <Button
+                                        type="submit"
+                                        variant="cta"
+                                        disabled={loading}
+                                        className="px-5"
+                                    >
+                                        {loading ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" /> Minerando...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Play className="h-4 w-4 fill-current" /> Iniciar Mineração
+                                            </>
+                                        )}
+                                    </Button>
+                                    <p className="text-xs text-slate-400">
+                                        <span className="text-rose-400" aria-hidden="true">*</span> Campo obrigatório para iniciar a mineração
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-4 py-3 text-xs text-zinc-300">
-                            <span className="inline-flex items-center gap-2 font-semibold text-zinc-100">
-                                <Database className="h-4 w-4 text-indigo-400" />
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-700/60 bg-slate-900/70 px-4 py-3 text-xs text-slate-300">
+                            <span className="inline-flex items-center gap-2 font-semibold text-slate-100">
+                                <Database className="h-4 w-4 text-cyan-400" />
                                 Execução
                             </span>
                             <span>
                                 {runStatus
-                                    ? `Status: ${runStatus.status}${runStatus.progress_stage ? ` / ${runStatus.progress_stage}` : ""}`
+                                    ? `Status: ${runStatusLabel(runStatus.status)}${runStatus.progress_stage ? ` / ${progressStageLabel(runStatus.progress_stage)}` : ""}`
                                     : formData.require_tests_passed
                                         ? "Build + detecção e execução de testes"
                                         : isBuildOnlyMode
                                             ? "Somente build, sem detectar testes"
                                             : "Somente busca, sem analyzer"}
                             </span>
-                            <span className="text-zinc-500">
+                            <span className="text-slate-400">
                                 {analyzerWillRun
                                     ? formData.allow_jdk_upgrade
                                         ? "análise com upgrade de JDK permitido"
@@ -1110,12 +1141,12 @@ export default function MiningDashboard({
                                     : "analyzer desligado"}
                             </span>
                             {!formData.persist_eliminated_repositories && (
-                                <span className="text-zinc-500">
+                                <span className="text-slate-400">
                                     eliminados não serão persistidos
                                 </span>
                             )}
                             {loading && runStatus && (
-                                <span className="text-zinc-500">
+                                <span className="text-slate-400">
                                     {progressCurrent}/{progressTotal || "?"} repositórios analisados ({progressPercent}%)
                                 </span>
                             )}
@@ -1154,18 +1185,18 @@ export default function MiningDashboard({
                 </section>
 
                 {loading && runStatus && (
-                    <div className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-300">
-                            <span className="font-semibold text-zinc-100">
+                    <div role="status" aria-live="polite" className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
+                            <span className="font-semibold text-slate-100">
                                 Run #{runStatus.id} {runStatus.status === "completed" ? "carregada" : "em andamento"}
                             </span>
                             <span>
                                 {progressCurrent}/{progressTotal || "?"} processados · {runStatus.accepted_repositories} aceitos · {runStatus.eliminated_repositories} eliminados
                             </span>
                         </div>
-                        <div className="mt-3 h-2 rounded-full bg-zinc-900 overflow-hidden">
+                        <div className="mt-3 h-2 rounded-full bg-slate-900 overflow-hidden">
                             <div
-                                className="h-full bg-indigo-500 transition-all"
+                                className="h-full bg-cyan-500 transition-all"
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
@@ -1174,34 +1205,34 @@ export default function MiningDashboard({
 
                 {(repositories.length > 0 || lastRunId !== null) && (
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex flex-wrap items-center gap-3 text-xs text-zinc-400">
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
                             {lastRunId !== null && (
-                                <span className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
-                                    <Database className="h-4 w-4 text-indigo-400" />
+                                <span className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
+                                    <Database className="h-4 w-4 text-cyan-400" />
                                     Run #{lastRunId}
                                 </span>
                             )}
-                            <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+                            <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
                                 Total da resposta: {lastTotal}
                             </span>
                             {runStatus && (
-                                <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
-                                    {runStatus.status}
-                                    {runStatus.progress_stage ? ` / ${runStatus.progress_stage}` : ""}
+                                <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
+                                    {runStatusLabel(runStatus.status)}
+                                    {runStatus.progress_stage ? ` / ${progressStageLabel(runStatus.progress_stage)}` : ""}
                                 </span>
                             )}
-                            <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+                            <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
                                 {lastRunIncludedTests ? "Testes analisados" : "Testes ignorados"}
                             </span>
                             {runStatus && (
                                 <>
-                                    <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
                                         Página {runStatus.page_cursor ?? 1} / índice {runStatus.last_processed_index ?? 0}
                                     </span>
-                                    <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
                                         Lote {runStatus.batch_size ?? "-"}
                                     </span>
-                                    <span className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2">
+                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
                                         Aceitação {Math.round((runStatus.acceptance_rate ?? 0) * 100)}%
                                     </span>
                                     {runStatus && !canResumeRun && Boolean(runStatus.exhausted) && (
@@ -1217,36 +1248,33 @@ export default function MiningDashboard({
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             {canCancelRun && (
-                                <button
-                                    type="button"
-                                    onClick={handleCancelRun}
-                                    className="inline-flex items-center gap-2 bg-rose-600 hover:bg-rose-500 text-white border border-rose-500 px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer"
-                                >
+                                <Button type="button" variant="danger" onClick={handleCancelRun}>
                                     <XCircle className="h-4 w-4" />
                                     Cancelar
-                                </button>
+                                </Button>
                             )}
                             {canResumeRun && (
-                                <button
+                                <Button
                                     type="button"
+                                    variant="primary"
                                     onClick={handleResumeRun}
                                     disabled={loading}
-                                    className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-not-allowed text-white border border-indigo-500 px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer"
+                                    title="A retomada usa o token configurado no servidor, pois o token digitado não é salvo."
                                 >
                                     <Play className="h-4 w-4" />
                                     Retomar consulta
-                                </button>
+                                </Button>
                             )}
-                            <button
+                            <Button
                                 type="button"
+                                variant="secondary"
                                 onClick={onOpenStatistics}
                                 disabled={!statistics}
                                 title={!statistics ? "Nenhuma estatística carregada ainda" : undefined}
-                                className="inline-flex items-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-100 border border-zinc-700 px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <SlidersHorizontal className="h-4 w-4 text-indigo-400" />
+                                <SlidersHorizontal className="h-4 w-4 text-primary-400" />
                                 Ver estatísticas
-                            </button>
+                            </Button>
                         </div>
                     </div>
                 )}
@@ -1254,94 +1282,86 @@ export default function MiningDashboard({
                 {/* Métricas Resumidas */}
                 {repositories.length > 0 && (
                     <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-4 shadow-sm">
-                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Total Encontrado</span>
-                            <p className="text-2xl font-bold text-zinc-100 mt-1">{repositories.length}</p>
-                        </div>
-                        <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-4 shadow-sm">
-                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Taxa de Compilação</span>
-                            <p className="text-2xl font-bold text-emerald-400 mt-1">{metrics.compiled}%</p>
-                        </div>
-                        <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-4 shadow-sm">
-                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Testes com Sucesso</span>
-                            <p className="text-2xl font-bold text-indigo-400 mt-1">{metrics.passed}%</p>
-                        </div>
-                        <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-4 shadow-sm">
-                            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Upgrades de JDK</span>
-                            <p className="text-2xl font-bold text-amber-400 mt-1">{metrics.upgraded}</p>
-                            <p className="text-xs text-zinc-500 mt-1">
+                        <Card padding="sm" className="shadow-sm">
+                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Total Encontrado</span>
+                            <p className="text-2xl font-bold text-neutral-100 mt-1">{repositories.length}</p>
+                        </Card>
+                        <Card padding="sm" className="shadow-sm">
+                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Taxa de Compilação</span>
+                            <p className="text-2xl font-bold text-success-400 mt-1">{metrics.compiled}%</p>
+                        </Card>
+                        <Card padding="sm" className="shadow-sm">
+                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Testes com Sucesso</span>
+                            <p className="text-2xl font-bold text-primary-400 mt-1">{metrics.passed}%</p>
+                        </Card>
+                        <Card padding="sm" className="shadow-sm">
+                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Upgrades de JDK</span>
+                            <p className="text-2xl font-bold text-warning-400 mt-1">{metrics.upgraded}</p>
+                            <p className="text-xs text-neutral-400 mt-1">
                                 JDK efetivo diferente da versão declarada
                             </p>
-                        </div>
+                        </Card>
                     </div>
                 )}
 
                 {/* Tabela de Resultados */}
-                <section className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl overflow-hidden shadow-md">
+                <section className="bg-slate-800/80 border border-slate-700/60 rounded-xl overflow-hidden shadow-md">
                     {/* Barra de Filtros Locais */}
-                    <div className="p-4 border-b border-zinc-700/60 bg-zinc-900/50 flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 flex-1 max-w-sm">
-                            <Filter className="h-4 w-4 text-zinc-400" />
-                            <input
+                    <div className="p-4 border-b border-slate-700/60 bg-slate-900/50 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex-1 max-w-sm">
+                            <TextInput
+                                icon={<Filter />}
                                 type="text"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Filtrar por nome do repositório..."
-                                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                                aria-label="Filtrar por nome do repositório"
                             />
                         </div>
 
                         <div className="flex items-center gap-4 text-xs font-medium">
                             <div className="flex items-center gap-2">
-                                <span className="text-zinc-400">Java:</span>
-                                <select
+                                <span className="text-slate-400" id="local-java-filter-label">Java:</span>
+                                <Select
+                                    aria-labelledby="local-java-filter-label"
                                     value={selectedJavaVersion}
                                     onChange={(e) => setSelectedJavaVersion(e.target.value)}
-                                    className="bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1 text-zinc-200 focus:outline-none focus:border-indigo-500"
                                 >
                                     <option value="ALL">Todas</option>
                                     {javaVersionOptions.map((version) => (
                                         <option key={version} value={version}>Java {version}</option>
                                     ))}
-                                </select>
+                                </Select>
                             </div>
 
-                            <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.require_buildable}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            require_buildable: e.target.checked,
-                                        })
-                                    }
-                                    className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                />
-                                Buildáveis
-                            </label>
+                            <Checkbox
+                                label="Buildáveis"
+                                checked={formData.require_buildable}
+                                onChange={(e) =>
+                                    setFormData({
+                                        ...formData,
+                                        require_buildable: e.target.checked,
+                                    })
+                                }
+                            />
 
-                            <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300">
-                                <input
-                                    type="checkbox"
-                                    checked={formData.require_tests_passed}
-                                    onChange={(e) =>
-                                        setFormData({
-                                            ...formData,
-                                            require_tests_passed: e.target.checked,
-                                        })
-                                    }
-                                    className="rounded border-zinc-600 bg-zinc-900 text-indigo-500 focus:ring-indigo-500"
-                                />
-                                Testes OK
-                            </label>
+                            <Checkbox
+                                label="Testes OK"
+                                checked={formData.require_tests_passed}
+                                onChange={(e) =>
+                                    setFormData({
+                                        ...formData,
+                                        require_tests_passed: e.target.checked,
+                                    })
+                                }
+                            />
                         </div>
                     </div>
 
                     {/* Listagem */}
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs">
-                            <thead className="bg-zinc-900/80 text-zinc-400 border-b border-zinc-700/60 uppercase tracking-wider font-semibold">
+                            <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-700/60 uppercase tracking-wider font-semibold">
                                 <tr>
                                     <th className="py-3.5 px-4">Repositório</th>
                                     <th className="py-3.5 px-4">Versão Java</th>
@@ -1352,23 +1372,34 @@ export default function MiningDashboard({
                                     <th className="py-3.5 px-4 text-right">Ações</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-zinc-700/40">
-                                {filteredRepositories.length === 0 ? (
+                            <tbody className="divide-y divide-slate-700/40">
+                                {loading ? (
                                     <tr>
-                                        <td colSpan={7} className="py-10 text-center text-zinc-500">
-                                            Nenhum repositório para exibir. Realize uma busca acima.
+                                        <td colSpan={7} className="py-10 text-center text-slate-300">
+                                            <span className="inline-flex items-center gap-2">
+                                                <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
+                                                Minerando repositórios...
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ) : filteredRepositories.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="py-10 text-center text-slate-400">
+                                            {lastRunId === null
+                                                ? "Nenhuma busca realizada ainda. Preencha o formulário acima e inicie uma mineração."
+                                                : "Nenhum repositório encontrado para os filtros atuais."}
                                         </td>
                                     </tr>
                                 ) : (
                                     filteredRepositories.map((repo) => (
-                                        <tr key={`${repo.name}::${repo.matched_file ?? "root"}::${repo.commit_sha ?? ""}`} className="hover:bg-zinc-700/30 transition">
-                                            <td className="py-3 px-4 font-mono font-medium text-zinc-100">
+                                        <tr key={`${repo.name}::${repo.matched_file ?? "root"}::${repo.commit_sha ?? ""}`} className="hover:bg-slate-700/30 transition">
+                                            <td className="py-3 px-4 font-mono font-medium text-slate-100">
                                                 {repo.name}
                                             </td>
 
                                             <td className="py-3 px-4">
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded font-mono">
+                                                    <span className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded font-mono">
                                                         JDK {repo.effective_java_version || repo.java_version || "?"}
                                                     </span>
                                                     {repo.effective_java_version &&
@@ -1386,7 +1417,7 @@ export default function MiningDashboard({
 
                                             <td className="py-3 px-4">
                                                 {!repo.analyzed ? (
-                                                    <span className="text-zinc-500">Não analisado</span>
+                                                    <span className="text-slate-400">Não analisado</span>
                                                 ) : repo.compiled ? (
                                                     <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
                                                         <CheckCircle2 className="h-3.5 w-3.5" /> OK
@@ -1397,7 +1428,7 @@ export default function MiningDashboard({
                                                     </span>
                                                 )}
                                                 {repo.compile_duration_seconds !== null && repo.compile_duration_seconds !== undefined && (
-                                                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                                         {formatDuration(repo.compile_duration_seconds)}
                                                     </div>
                                                 )}
@@ -1405,9 +1436,9 @@ export default function MiningDashboard({
 
                                             <td className="py-3 px-4">
                                                 {!lastRunIncludedTests ? (
-                                                    <span className="text-zinc-500">Ignorado</span>
+                                                    <span className="text-slate-400">Ignorado</span>
                                                 ) : !repo.has_tests ? (
-                                                    <span className="text-zinc-500">Sem testes</span>
+                                                    <span className="text-slate-400">Sem testes</span>
                                                 ) : repo.tests_passed ? (
                                                     <span className="inline-flex items-center gap-1 text-emerald-400 font-medium">
                                                         <CheckCircle2 className="h-3.5 w-3.5" /> Passaram
@@ -1418,7 +1449,7 @@ export default function MiningDashboard({
                                                     </span>
                                                 )}
                                                 {repo.test_duration_seconds !== null && repo.test_duration_seconds !== undefined && (
-                                                    <div className="text-[10px] text-zinc-500 font-mono mt-0.5">
+                                                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                                         {formatDuration(repo.test_duration_seconds)}
                                                     </div>
                                                 )}
@@ -1426,7 +1457,7 @@ export default function MiningDashboard({
 
                                             <td className="py-3 px-4">
                                                 {!repo.analyzed ? (
-                                                    <span className="text-zinc-500">Minerado</span>
+                                                    <span className="text-slate-400">Minerado</span>
                                                 ) : repo.eliminated ? (
                                                     <span className="inline-flex items-center gap-1 bg-rose-500/10 text-rose-400 border border-rose-500/20 px-2 py-0.5 rounded text-[11px] font-medium">
                                                         <AlertTriangle className="h-3 w-3" />
@@ -1440,7 +1471,7 @@ export default function MiningDashboard({
                                             </td>
 
                                             <td className="py-3 px-4">
-                                                <div className="max-w-44 space-y-1 text-[11px] text-zinc-400">
+                                                <div className="max-w-44 space-y-1 text-[11px] text-slate-400">
                                                     {repo.matched_filter && (
                                                         <div className="truncate" title={repo.matched_filter}>
                                                             {repo.matched_filter}
@@ -1452,7 +1483,7 @@ export default function MiningDashboard({
                                                         </div>
                                                     )}
                                                     {repo.commit_sha && (
-                                                        <div className="font-mono text-zinc-500">
+                                                        <div className="font-mono text-slate-400">
                                                             {repo.commit_sha.slice(0, 7)}
                                                         </div>
                                                     )}
@@ -1461,17 +1492,20 @@ export default function MiningDashboard({
 
                                             <td className="py-3 px-4 text-right space-x-2">
                                                 <button
+                                                    type="button"
                                                     onClick={() => setSelectedRepoDetails(repo)}
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-700/60 hover:bg-zinc-700 text-zinc-200 border border-zinc-600 transition cursor-pointer font-medium"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-slate-700/60 hover:bg-slate-700 text-slate-200 border border-slate-600 transition cursor-pointer font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
                                                     title="Ver detalhes de testes e tempos"
+                                                    aria-label={`Ver detalhes de ${repo.name}`}
                                                 >
-                                                    <Info className="h-3 w-3 text-zinc-400" /> Detalhes
+                                                    <Info className="h-3 w-3 text-slate-400" /> Detalhes
                                                 </button>
                                                 <a
                                                     href={repo.repository_url}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/30 transition font-medium"
+                                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/30 transition font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                                                    aria-label={`Abrir ${repo.name} no GitHub`}
                                                 >
                                                     <ExternalLink className="h-3 w-3" /> Link
                                                 </a>
@@ -1486,111 +1520,106 @@ export default function MiningDashboard({
 
                 {/* Modal de Detalhes */}
                 {selectedRepoDetails && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl">
-                            <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-950/60 rounded-t-xl">
-                                <div className="flex items-center gap-2">
-                                    <Info className="h-4 w-4 text-indigo-400" />
-                                    <h3 className="font-semibold text-sm text-zinc-100">
-                                        Detalhes: {selectedRepoDetails.name}
-                                    </h3>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedRepoDetails(null)}
-                                    className="text-zinc-400 hover:text-white text-xs px-2.5 py-1 rounded bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition cursor-pointer"
-                                >
-                                    Fechar
-                                </button>
-                            </div>
-                            <div className="p-4 overflow-y-auto flex-1 space-y-5">
+                    <Modal
+                        open={Boolean(selectedRepoDetails)}
+                        onClose={() => setSelectedRepoDetails(null)}
+                        titleId="repo-detail-title"
+                        title={
+                            <>
+                                <Info className="h-4 w-4 text-cyan-400" />
+                                <span>Detalhes: {selectedRepoDetails.name}</span>
+                            </>
+                        }
+                    >
+                        <>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {selectedRepoDetails.compile_duration_seconds !== null && selectedRepoDetails.compile_duration_seconds !== undefined && (
-                                        <div className="bg-zinc-800/60 border border-zinc-700/60 rounded-lg p-3">
-                                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                        <div className="bg-slate-800/60 border border-slate-700/60 rounded-lg p-3">
+                                            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
                                                 <Clock className="h-3.5 w-3.5 text-amber-400" /> Tempo de compilação
                                             </div>
-                                            <p className="text-lg font-bold text-zinc-100 font-mono">
+                                            <p className="text-lg font-bold text-slate-100 font-mono">
                                                 {formatDuration(selectedRepoDetails.compile_duration_seconds)}
                                             </p>
-                                            <p className="text-[11px] text-zinc-500 mt-0.5">Do início ao fim da etapa de build.</p>
+                                            <p className="text-[11px] text-slate-400 mt-0.5">Do início ao fim da etapa de build.</p>
                                         </div>
                                     )}
-                                    <div className="bg-zinc-800/60 border border-zinc-700/60 rounded-lg p-3">
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                    <div className="bg-slate-800/60 border border-slate-700/60 rounded-lg p-3">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
                                             <Clock className="h-3.5 w-3.5 text-amber-400" /> Tempo de testagem
                                         </div>
-                                        <p className="text-lg font-bold text-zinc-100 font-mono">
+                                        <p className="text-lg font-bold text-slate-100 font-mono">
                                             {formatDuration(selectedRepoDetails.test_duration_seconds)}
                                         </p>
-                                        <p className="text-[11px] text-zinc-500 mt-0.5">Do início ao fim da etapa de testes.</p>
+                                        <p className="text-[11px] text-slate-400 mt-0.5">Do início ao fim da etapa de testes.</p>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     <div>
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
-                                            <TestTube2 className="h-3.5 w-3.5 text-indigo-400" /> Frameworks de teste
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                                            <TestTube2 className="h-3.5 w-3.5 text-cyan-400" /> Frameworks de teste
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                             {splitTags(selectedRepoDetails.test_frameworks).length > 0 ? (
                                                 splitTags(selectedRepoDetails.test_frameworks).map((tag) => (
-                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                    <span key={tag} className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded text-[11px] font-mono">
                                                         {tag}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-zinc-500 text-xs">Nenhum detectado</span>
+                                                <span className="text-slate-400 text-xs">Nenhum detectado</span>
                                             )}
                                         </div>
                                     </div>
 
                                     <div>
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
-                                            <Code2 className="h-3.5 w-3.5 text-indigo-400" /> Bibliotecas de mock
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                                            <Code2 className="h-3.5 w-3.5 text-cyan-400" /> Bibliotecas de mock
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                             {splitTags(selectedRepoDetails.mock_libraries).length > 0 ? (
                                                 splitTags(selectedRepoDetails.mock_libraries).map((tag) => (
-                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                    <span key={tag} className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded text-[11px] font-mono">
                                                         {tag}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                                <span className="text-slate-400 text-xs">Nenhuma detectada</span>
                                             )}
                                         </div>
                                     </div>
 
                                     <div>
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
                                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" /> Bibliotecas de asserção
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                             {splitTags(selectedRepoDetails.assertion_libraries).length > 0 ? (
                                                 splitTags(selectedRepoDetails.assertion_libraries).map((tag) => (
-                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                    <span key={tag} className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded text-[11px] font-mono">
                                                         {tag}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                                <span className="text-slate-400 text-xs">Nenhuma detectada</span>
                                             )}
                                         </div>
                                     </div>
 
                                     <div>
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
-                                            <Layers3 className="h-3.5 w-3.5 text-indigo-400" /> Ferramentas de teste de integração
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
+                                            <Layers3 className="h-3.5 w-3.5 text-cyan-400" /> Ferramentas de teste de integração
                                         </div>
                                         <div className="flex flex-wrap gap-1.5">
                                             {splitTags(selectedRepoDetails.integration_test_tools).length > 0 ? (
                                                 splitTags(selectedRepoDetails.integration_test_tools).map((tag) => (
-                                                    <span key={tag} className="bg-zinc-900 border border-zinc-700 text-zinc-300 px-2 py-0.5 rounded text-[11px] font-mono">
+                                                    <span key={tag} className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded text-[11px] font-mono">
                                                         {tag}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-zinc-500 text-xs">Nenhuma detectada</span>
+                                                <span className="text-slate-400 text-xs">Nenhuma detectada</span>
                                             )}
                                         </div>
                                     </div>
@@ -1598,17 +1627,16 @@ export default function MiningDashboard({
 
                                 {selectedRepoDetails.error_message && (
                                     <div>
-                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
+                                        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide mb-2">
                                             <Terminal className="h-3.5 w-3.5 text-rose-400" /> Logs de erro
                                         </div>
-                                        <div className="p-3 font-mono text-xs text-rose-300 bg-zinc-950 border border-zinc-800 rounded-lg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
+                                        <div className="p-3 font-mono text-xs text-rose-300 bg-slate-950 border border-slate-800 rounded-lg leading-relaxed whitespace-pre-wrap max-h-56 overflow-y-auto">
                                             {selectedRepoDetails.error_message}
                                         </div>
                                     </div>
                                 )}
-                            </div>
-                        </div>
-                    </div>
+                        </>
+                    </Modal>
                 )}
 
             </div>

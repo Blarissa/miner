@@ -8,6 +8,7 @@ import {
     XCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type { CountPercentageStat, DurationStat, RateStat, RepositoryStatistics } from "../models/types";
 
 interface StatisticsPageProps {
@@ -33,19 +34,19 @@ function SummaryCard({
     tone?: "default" | "success" | "danger" | "warning";
 }) {
     const toneClass = {
-        default: "text-zinc-100",
+        default: "text-slate-100",
         success: "text-emerald-400",
         danger: "text-rose-400",
         warning: "text-amber-400",
     }[tone];
 
     return (
-        <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-4">
-            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+        <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-4">
+            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 {label}
             </span>
             <p className={`text-2xl font-bold mt-1 ${toneClass}`}>{value}</p>
-            {detail && <p className="text-xs text-zinc-500 mt-1">{detail}</p>}
+            {detail && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
         </div>
     );
 }
@@ -54,14 +55,14 @@ function BarRow({ label, value, percentage }: { label: string; value: number; pe
     return (
         <div className="space-y-1">
             <div className="flex items-center justify-between gap-3 text-xs">
-                <span className="text-zinc-300 truncate">{label}</span>
-                <span className="font-mono text-zinc-400">
+                <span className="text-slate-300 truncate">{label}</span>
+                <span className="font-mono text-slate-400">
                     {value} ({percentage}%)
                 </span>
             </div>
-            <div className="h-2 rounded-full bg-zinc-900 overflow-hidden">
+            <div className="h-2 rounded-full bg-slate-900 overflow-hidden">
                 <div
-                    className="h-full rounded-full bg-indigo-500"
+                    className="h-full rounded-full bg-cyan-500"
                     style={{ width: `${Math.min(Math.max(percentage, 0), 100)}%` }}
                 />
             </div>
@@ -72,8 +73,12 @@ function BarRow({ label, value, percentage }: { label: string; value: number; pe
 function CountList({ items, emptyText }: { items: CountPercentageStat[]; emptyText: string }) {
     const visibleItems = items.filter((item) => item.value.trim().toLowerCase() !== "unknown");
 
+    const hiddenCount = items
+        .filter((item) => item.value.trim().toLowerCase() === "unknown")
+        .reduce((total, item) => total + item.count, 0);
+
     if (visibleItems.length === 0) {
-        return <p className="text-sm text-zinc-500">{emptyText}</p>;
+        return <p className="text-sm text-slate-400">{emptyText}</p>;
     }
 
     return (
@@ -86,13 +91,18 @@ function CountList({ items, emptyText }: { items: CountPercentageStat[]; emptyTe
                     percentage={item.percentage}
                 />
             ))}
+            {hiddenCount > 0 && (
+                <p className="border-t border-slate-700/60 pt-2 text-xs text-slate-400">
+                    Desconhecido (não exibido): {hiddenCount}. As porcentagens acima consideram todos os itens.
+                </p>
+            )}
         </div>
     );
 }
 
 function RateList({ items, emptyText }: { items: RateStat[]; emptyText: string }) {
     if (items.length === 0) {
-        return <p className="text-sm text-zinc-500">{emptyText}</p>;
+        return <p className="text-sm text-slate-400">{emptyText}</p>;
     }
 
     return (
@@ -125,12 +135,12 @@ function DurationSummary({
     }
 
     return (
-        <div className="bg-zinc-900/60 border border-zinc-700/60 rounded-lg p-4">
-            <span className="text-xs text-zinc-400">{title}</span>
-            <p className="text-xl font-bold text-zinc-100 mt-1">
+        <div className="bg-slate-900/60 border border-slate-700/60 rounded-lg p-4">
+            <span className="text-xs text-slate-400">{title}</span>
+            <p className="text-xl font-bold text-slate-100 mt-1">
                 {secondsLabel(duration.average_seconds)}
             </p>
-            <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-zinc-400">
+            <div className="grid grid-cols-2 gap-2 mt-3 text-xs text-slate-400">
                 <span>Total: {secondsLabel(duration.total_seconds)}</span>
                 <span>Execuções: {duration.count}</span>
                 <span>Mín: {secondsLabel(duration.min_seconds)}</span>
@@ -150,10 +160,10 @@ function Panel({
     children: ReactNode;
 }) {
     return (
-        <section className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-5">
+        <section className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-4">
                 {icon}
-                <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+                <h2 className="text-sm font-semibold text-slate-100">{title}</h2>
             </div>
             {children}
         </section>
@@ -166,11 +176,28 @@ export default function StatisticsPage({
 }: StatisticsPageProps) {
     if (!statistics) {
         return (
-            <div className="min-h-screen bg-zinc-900 text-zinc-200 p-6 sm:p-10 font-sans">
+            <div className="min-h-screen bg-slate-950 text-slate-200 p-6 sm:p-10 font-sans">
                 <div className="max-w-7xl mx-auto space-y-7">
-                    <div className="bg-zinc-800/80 border border-zinc-700/60 rounded-xl p-8 text-center">
-                        <BarChart3 className="h-8 w-8 text-zinc-500 mx-auto mb-3" />
-                        <p className="text-zinc-400">Nenhuma estatística disponível ainda.</p>
+                    <div className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-8 text-center">
+                        <BarChart3 className="h-8 w-8 text-slate-500 mx-auto mb-3" />
+                        <p className="text-slate-300 font-medium">Nenhuma estatística disponível ainda.</p>
+                        <p className="mt-1 text-sm text-slate-400">
+                            As estatísticas ficam disponíveis após uma mineração (ou ao carregar uma execução anterior).
+                        </p>
+                        <div className="mt-5 flex flex-wrap justify-center gap-3">
+                            <Link
+                                to="/dashboard"
+                                className="inline-flex items-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-orange-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
+                            >
+                                Ir para Mineração
+                            </Link>
+                            <Link
+                                to="/"
+                                className="inline-flex items-center rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                            >
+                                Carregar execução por Run ID
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -203,21 +230,25 @@ export default function StatisticsPage({
     ] as const;
 
     return (
-        <div className="min-h-screen bg-zinc-900 text-zinc-200 p-6 sm:p-10 font-sans">
+        <div className="min-h-screen bg-slate-950 text-slate-200 p-6 sm:p-10 font-sans">
             <div className="max-w-7xl mx-auto space-y-7">
-                <header className="flex flex-wrap items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+                <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-zinc-50 flex items-center gap-2.5">
-                            <BarChart3 className="h-7 w-7 text-indigo-400" />
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-50 flex items-center gap-2.5">
+                            <BarChart3 className="h-7 w-7 text-cyan-400" />
                             Estatísticas da Mineração
                         </h1>
                     </div>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
                         Escopo: {scopeLabel(statistics.scope)}
                     </span>
                 </header>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div
+                    className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${
+                        showEliminatedRepositoryStats ? "lg:grid-cols-5" : "lg:grid-cols-2"
+                    }`}
+                >
                     <SummaryCard label="Total no escopo" value={statistics.total} />
                     <SummaryCard label="Total analisado" value={funnel.analyzed} />
                     {showEliminatedRepositoryStats && (
@@ -245,12 +276,12 @@ export default function StatisticsPage({
                 </div>
 
                 {showEliminatedRepositoryStats && (
-                    <Panel title="Funil de análise" icon={<Layers3 className="h-4 w-4 text-indigo-400" />}>
+                    <Panel title="Funil de análise" icon={<Layers3 className="h-4 w-4 text-cyan-400" />}>
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                             {funnelItems.map(([label, value]) => (
-                                <div key={label} className="bg-zinc-900/60 border border-zinc-700/60 rounded-lg p-4">
-                                    <span className="text-xs text-zinc-400">{label}</span>
-                                    <p className="text-xl font-bold text-zinc-100 mt-1">{value}</p>
+                                <div key={label} className="bg-slate-900/60 border border-slate-700/60 rounded-lg p-4">
+                                    <span className="text-xs text-slate-400">{label}</span>
+                                    <p className="text-xl font-bold text-slate-100 mt-1">{value}</p>
                                 </div>
                             ))}
                         </div>
@@ -258,21 +289,21 @@ export default function StatisticsPage({
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    <Panel title="Java declarado" icon={<Code2 className="h-4 w-4 text-indigo-400" />}>
+                    <Panel title="Java declarado" icon={<Code2 className="h-4 w-4 text-cyan-400" />}>
                         <CountList items={declaredJavaVersions} emptyText="Sem versões Java declaradas no escopo." />
                     </Panel>
 
                     {hasJavaUpgrade && (
-                        <Panel title="Java declarado x efetivo" icon={<BarChart3 className="h-4 w-4 text-indigo-400" />}>
+                        <Panel title="Java declarado x efetivo" icon={<BarChart3 className="h-4 w-4 text-cyan-400" />}>
                             <CountList items={javaVersionComparison} emptyText="Sem comparação de versões no escopo." />
                         </Panel>
                     )}
 
-                    <Panel title="Frameworks de teste" icon={<TestTube2 className="h-4 w-4 text-indigo-400" />}>
+                    <Panel title="Frameworks de teste" icon={<TestTube2 className="h-4 w-4 text-cyan-400" />}>
                         <CountList items={testFrameworks} emptyText="Sem frameworks de teste no escopo." />
                     </Panel>
 
-                    <Panel title="Bibliotecas de mock" icon={<Code2 className="h-4 w-4 text-indigo-400" />}>
+                    <Panel title="Bibliotecas de mock" icon={<Code2 className="h-4 w-4 text-cyan-400" />}>
                         <CountList items={mockLibraries} emptyText="Sem bibliotecas de mock no escopo." />
                     </Panel>
 
@@ -280,7 +311,7 @@ export default function StatisticsPage({
                         <CountList items={assertionLibraries} emptyText="Sem bibliotecas de asserção no escopo." />
                     </Panel>
 
-                    <Panel title="Ferramentas de teste de integração" icon={<Layers3 className="h-4 w-4 text-indigo-400" />}>
+                    <Panel title="Ferramentas de teste de integração" icon={<Layers3 className="h-4 w-4 text-cyan-400" />}>
                         <CountList items={integrationTestTools} emptyText="Sem ferramentas de integração no escopo." />
                     </Panel>
 
@@ -295,13 +326,13 @@ export default function StatisticsPage({
                                 )}
                             </div>
                         ) : (
-                            <p className="text-sm text-zinc-500">Sem tempos registrados.</p>
+                            <p className="text-sm text-slate-400">Sem tempos registrados.</p>
                         )}
                     </Panel>
 
                     {showEliminatedRepositoryStats && (
                         <>
-                            <Panel title="Relação com testes" icon={<TestTube2 className="h-4 w-4 text-indigo-400" />}>
+                            <Panel title="Relação com testes" icon={<TestTube2 className="h-4 w-4 text-cyan-400" />}>
                                 <CountList
                                     items={statistics.test_repository_relation.distribution}
                                     emptyText="Sem dados de testes no escopo."
@@ -334,7 +365,7 @@ export default function StatisticsPage({
                                 />
                             </Panel>
 
-                            <Panel title="Taxa de compilação por build" icon={<BarChart3 className="h-4 w-4 text-indigo-400" />}>
+                            <Panel title="Taxa de compilação por build" icon={<BarChart3 className="h-4 w-4 text-cyan-400" />}>
                                 <RateList
                                     items={statistics.compilation_rate_by_build_tool}
                                     emptyText="Sem dados de build no escopo."

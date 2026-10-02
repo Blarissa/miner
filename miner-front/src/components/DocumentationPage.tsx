@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PROGRESS_STAGE_LABELS, RUN_STATUS_LABELS } from "../models/runLabels";
 import type { ReactNode } from "react";
 import {
     AlertTriangle,
@@ -109,9 +110,11 @@ const FIELDS: FieldDoc[] = [
         description: (
             <>
                 Token de acesso pessoal do GitHub (<Code>ghp_…</Code> ou{" "}
-                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. Se ficar vazio,
-                o backend usa o token padrão configurado no servidor. O token é enviado apenas na requisição da
-                busca e não aparece nos resultados.
+                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. É obrigatório no
+                formulário. O token é usado apenas durante a execução da busca:{" "}
+                <strong>ele não é gravado no banco de dados</strong> e não aparece nos resultados nem no
+                histórico das execuções. (Chamando a API diretamente, se o token for omitido o backend usa o
+                token configurado no servidor.)
             </>
         ),
         tip: (
@@ -151,9 +154,19 @@ const FIELDS: FieldDoc[] = [
         label: "Stars",
         group: "Campos principais",
         qualifier: "stars:",
-        appliesTo: "repositories",
+        appliesTo: "both",
         description:
             "Filtra pela quantidade de estrelas do repositório. Aceita número exato ou intervalos (veja “Sintaxe de valores”).",
+        tip: (
+            <>
+                Na <strong>Repository Search</strong> o GitHub aplica o filtro na própria busca. No{" "}
+                <strong>Code Search</strong> o resultado do GitHub não traz as estrelas, então a plataforma
+                consulta cada repositório encontrado e filtra depois; por isso a busca fica mais lenta e usa
+                mais requisições da API. Nesse tipo, use apenas <Code>{">=100"}</Code>, <Code>{"<=500"}</Code>,{" "}
+                <Code>{">10"}</Code>, <Code>{"<1000"}</Code> ou um número exato. Intervalos como{" "}
+                <Code>10..50</Code> só funcionam na Repository Search; no Code Search eles não filtram nada.
+            </>
+        ),
         examples: [
             { value: ">=100", meaning: "100 estrelas ou mais" },
             { value: "10..50", meaning: "entre 10 e 50 estrelas" },
@@ -164,8 +177,16 @@ const FIELDS: FieldDoc[] = [
         label: "Forks",
         group: "Campos principais",
         qualifier: "forks:",
-        appliesTo: "repositories",
+        appliesTo: "both",
         description: "Filtra pela quantidade de forks que o repositório possui.",
+        tip: (
+            <>
+                Mesmo comportamento de Stars: na <strong>Repository Search</strong> o filtro é do próprio
+                GitHub; no <strong>Code Search</strong> é aplicado pela plataforma após a busca (consultando
+                cada repositório) e só aceita <Code>{">="}</Code>, <Code>{"<="}</Code>, <Code>{">"}</Code>,{" "}
+                <Code>{"<"}</Code> ou número exato (intervalos como <Code>10..50</Code> não filtram).
+            </>
+        ),
         examples: [
             { value: "10..50", meaning: "entre 10 e 50 forks" },
             { value: ">=5", meaning: "5 forks ou mais" },
@@ -179,7 +200,8 @@ const FIELDS: FieldDoc[] = [
         description: (
             <>
                 Filtra pelo tamanho do repositório <strong>em kilobytes</strong>. Útil para evitar
-                projetos gigantes que demoram para clonar e compilar.
+                projetos gigantes que demoram para clonar e compilar. Vale apenas na Repository Search; no
+                Code Search este campo não é aplicado.
             </>
         ),
         examples: [
@@ -555,7 +577,7 @@ const PROGRESS_STAGES: { value: string; meaning: string }[] = [
 
 function Code({ children }: { children: ReactNode }) {
     return (
-        <code className="break-words rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[0.8em] text-indigo-200">
+        <code className="break-words rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 font-mono text-[0.8em] text-cyan-200">
             {children}
         </code>
     );
@@ -569,8 +591,8 @@ function Badge({
     tone?: "zinc" | "indigo" | "emerald" | "amber" | "rose" | "sky";
 }) {
     const tones = {
-        zinc: "border-zinc-600 bg-zinc-800 text-zinc-300",
-        indigo: "border-indigo-500/30 bg-indigo-500/10 text-indigo-300",
+        zinc: "border-slate-600 bg-slate-800 text-slate-300",
+        indigo: "border-cyan-500/30 bg-cyan-500/10 text-cyan-300",
         emerald: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
         amber: "border-amber-500/30 bg-amber-500/10 text-amber-300",
         rose: "border-rose-500/30 bg-rose-500/10 text-rose-300",
@@ -586,7 +608,7 @@ function Badge({
 const APPLIES_TO_BADGE: Record<AppliesTo, { label: string; tone: "indigo" | "emerald" | "sky" | "zinc" }> = {
     code: { label: "Code Search", tone: "sky" },
     repositories: { label: "Repository Search", tone: "emerald" },
-    both: { label: "Ambas as buscas", tone: "indigo" },
+    both: { label: "Code e Repository", tone: "indigo" },
     platform: { label: "Plataforma", tone: "zinc" },
 };
 
@@ -602,12 +624,12 @@ function Section({
     children: ReactNode;
 }) {
     return (
-        <section id={id} data-doc-section className="scroll-mt-6 space-y-4">
-            <h2 className="flex items-center gap-2 border-b border-zinc-800 pb-2 text-lg font-bold text-zinc-50">
+        <section id={id} data-doc-section className="scroll-mt-20 space-y-4">
+            <h2 className="flex items-center gap-2 border-b border-slate-800 pb-2 text-lg font-bold text-slate-50">
                 {icon}
                 {title}
             </h2>
-            <div className="space-y-4 text-sm leading-7 text-zinc-300">{children}</div>
+            <div className="space-y-4 text-sm leading-7 text-slate-300">{children}</div>
         </section>
     );
 }
@@ -622,15 +644,15 @@ function Callout({
     children: ReactNode;
 }) {
     const styles = {
-        info: { box: "border-indigo-500/25 bg-indigo-500/10", icon: <Info className="h-4 w-4 text-indigo-300" /> },
+        info: { box: "border-cyan-500/25 bg-cyan-500/10", icon: <Info className="h-4 w-4 text-cyan-300" /> },
         warning: { box: "border-amber-500/25 bg-amber-500/10", icon: <AlertTriangle className="h-4 w-4 text-amber-300" /> },
         tip: { box: "border-emerald-500/25 bg-emerald-500/10", icon: <Lightbulb className="h-4 w-4 text-emerald-300" /> },
     }[tone];
     return (
         <div className={`flex gap-3 rounded-lg border px-4 py-3 text-sm ${styles.box}`}>
             <div className="mt-1 shrink-0">{styles.icon}</div>
-            <div className="space-y-1 leading-6 text-zinc-200">
-                {title && <p className="font-semibold text-zinc-100">{title}</p>}
+            <div className="space-y-1 leading-6 text-slate-200">
+                {title && <p className="font-semibold text-slate-100">{title}</p>}
                 <div>{children}</div>
             </div>
         </div>
@@ -639,7 +661,7 @@ function Callout({
 
 function Card({ children }: { children: ReactNode }) {
     return (
-        <div className="min-w-0 rounded-xl border border-zinc-700/60 bg-zinc-800/80 p-4 shadow-sm">{children}</div>
+        <div className="min-w-0 rounded-xl border border-slate-700/60 bg-slate-800/80 p-4 shadow-sm">{children}</div>
     );
 }
 
@@ -651,19 +673,19 @@ function DefinitionTable({
     rows: { key: ReactNode; value: ReactNode }[];
 }) {
     return (
-        <div className="overflow-x-auto rounded-lg border border-zinc-700/60">
+        <div className="overflow-x-auto rounded-lg border border-slate-700/60">
             <table className="w-full text-left text-sm">
-                <thead className="bg-zinc-900/80 text-xs uppercase tracking-wider text-zinc-400">
+                <thead className="bg-slate-900/80 text-xs uppercase tracking-wider text-slate-400">
                     <tr>
                         <th className="px-4 py-2.5 font-semibold">{head[0]}</th>
                         <th className="px-4 py-2.5 font-semibold">{head[1]}</th>
                     </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-700/40 bg-zinc-800/50">
+                <tbody className="divide-y divide-slate-700/40 bg-slate-800/50">
                     {rows.map((row, index) => (
                         <tr key={index}>
                             <td className="whitespace-nowrap px-4 py-2.5 align-top">{row.key}</td>
-                            <td className="px-4 py-2.5 text-zinc-300">{row.value}</td>
+                            <td className="px-4 py-2.5 text-slate-300">{row.value}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -677,27 +699,27 @@ function FieldCard({ field }: { field: FieldDoc }) {
     return (
         <Card>
             <div className="flex flex-wrap items-center gap-2">
-                <h4 className="text-sm font-semibold text-zinc-100">{field.label}</h4>
+                <h4 className="text-sm font-semibold text-slate-100">{field.label}</h4>
                 {field.qualifier && <Code>{field.qualifier}</Code>}
                 <Badge tone={applies.tone}>{applies.label}</Badge>
                 {field.defaultValue && <Badge>Padrão: {field.defaultValue}</Badge>}
             </div>
-            <div className="mt-2 text-sm leading-6 text-zinc-300">{field.description}</div>
+            <div className="mt-2 text-sm leading-6 text-slate-300">{field.description}</div>
             {field.examples && field.examples.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                     {field.examples.map((example) => (
                         <span
                             key={example.value}
-                            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-xs"
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900 px-2.5 py-1 text-xs"
                         >
-                            <span className="font-mono text-indigo-200">{example.value}</span>
-                            <span className="text-zinc-500">→ {example.meaning}</span>
+                            <span className="font-mono text-cyan-200">{example.value}</span>
+                            <span className="text-slate-400">→ {example.meaning}</span>
                         </span>
                     ))}
                 </div>
             )}
             {field.tip && (
-                <p className="mt-3 flex gap-2 text-xs leading-5 text-zinc-400">
+                <p className="mt-3 flex gap-2 text-xs leading-5 text-slate-400">
                     <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
                     <span>{field.tip}</span>
                 </p>
@@ -708,7 +730,7 @@ function FieldCard({ field }: { field: FieldDoc }) {
 
 function Pre({ children }: { children: string }) {
     return (
-        <pre className="overflow-x-auto rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-3 font-mono text-xs leading-6 text-zinc-200">
+        <pre className="overflow-x-auto rounded-lg border border-slate-700 bg-slate-950 px-4 py-3 font-mono text-xs leading-6 text-slate-200">
             {children}
         </pre>
     );
@@ -761,12 +783,12 @@ export default function DocumentationPage() {
     };
 
     return (
-        <div className="min-h-screen bg-zinc-900 p-6 font-sans text-zinc-200 sm:p-10">
+        <div className="min-h-screen bg-slate-950 p-6 font-sans text-slate-200 sm:p-10">
             <div className="mx-auto flex max-w-7xl gap-10">
                 {/* Índice */}
                 <aside className="hidden w-56 shrink-0 xl:block">
-                    <nav className="sticky top-10 space-y-1">
-                        <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                    <nav className="sticky top-24 space-y-1" aria-label="Índice desta página">
+                        <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
                             Nesta página
                         </p>
                         {SECTIONS.map(({ id, label, icon: Icon }) => (
@@ -774,10 +796,11 @@ export default function DocumentationPage() {
                                 key={id}
                                 type="button"
                                 onClick={() => scrollTo(id)}
+                                aria-current={activeSection === id ? "location" : undefined}
                                 className={`flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-left text-xs font-medium transition ${
                                     activeSection === id
-                                        ? "bg-indigo-500/15 text-indigo-200"
-                                        : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
+                                        ? "bg-cyan-500/15 text-cyan-200"
+                                        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                                 }`}
                             >
                                 <Icon className="h-3.5 w-3.5" />
@@ -789,34 +812,34 @@ export default function DocumentationPage() {
 
                 {/* Conteúdo */}
                 <div className="min-w-0 flex-1 space-y-12">
-                    <header className="space-y-2 border-b border-zinc-800 pb-6">
-                        <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-zinc-50">
-                            <BookOpen className="h-7 w-7 text-indigo-400" />
+                    <header className="space-y-2 border-b border-slate-800 pb-6">
+                        <h1 className="flex items-center gap-2.5 text-2xl font-bold tracking-tight text-slate-50">
+                            <BookOpen className="h-7 w-7 text-cyan-400" />
                             Documentação
                         </h1>
-                        <p className="max-w-3xl text-sm leading-6 text-zinc-400">
+                        <p className="max-w-3xl text-sm leading-6 text-slate-400">
                             Tudo o que você precisa para usar o Minerador Java: o que cada campo de
                             pesquisa faz, como acompanhar uma execução, como ler os resultados e as
                             estatísticas. Os campos de busca seguem a sintaxe oficial de busca do
                             GitHub.
                         </p>
                         {/* Índice compacto para telas menores */}
-                        <div className="flex flex-wrap gap-2 pt-3 xl:hidden">
+                        <nav className="flex flex-wrap gap-2 pt-3 xl:hidden" aria-label="Índice desta página (compacto)">
                             {SECTIONS.map(({ id, label }) => (
                                 <button
                                     key={id}
                                     type="button"
                                     onClick={() => scrollTo(id)}
-                                    className="rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
+                                    className="rounded-full border border-slate-700 bg-slate-800 px-3 py-1 text-xs text-slate-300 hover:bg-slate-700"
                                 >
                                     {label}
                                 </button>
                             ))}
-                        </div>
+                        </nav>
                     </header>
 
                     {/* ------------------------------------------------ Visão geral */}
-                    <Section id="visao-geral" title="Visão geral" icon={<BookOpen className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="visao-geral" title="Visão geral" icon={<BookOpen className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             O Minerador Java encontra repositórios Java (Maven) no GitHub, verifica se
                             eles compilam e se os testes passam, e gera estatísticas sobre o conjunto
@@ -833,9 +856,9 @@ export default function DocumentationPage() {
                                 ["4. Persistência", "Grava repositórios e resultados no banco com um Run ID."],
                                 ["5. Estatísticas", "Calcula os indicadores exibidos na tela Estatísticas."],
                             ].map(([title, text]) => (
-                                <li key={title} className="rounded-lg border border-zinc-700/60 bg-zinc-800/80 p-3">
-                                    <p className="text-xs font-semibold text-indigo-300">{title}</p>
-                                    <p className="mt-1 text-xs leading-5 text-zinc-400">{text}</p>
+                                <li key={title} className="rounded-lg border border-slate-700/60 bg-slate-800/80 p-3">
+                                    <p className="text-xs font-semibold text-cyan-300">{title}</p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-400">{text}</p>
                                 </li>
                             ))}
                         </ol>
@@ -852,8 +875,8 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Primeira busca */}
-                    <Section id="primeira-busca" title="Primeira busca" icon={<Rocket className="h-5 w-5 text-indigo-400" />}>
-                        <p className="font-semibold text-zinc-100">Sua primeira busca, em 4 passos:</p>
+                    <Section id="primeira-busca" title="Primeira busca" icon={<Rocket className="h-5 w-5 text-cyan-400" />}>
+                        <p className="font-semibold text-slate-100">Sua primeira busca, em 4 passos:</p>
                         <ol className="list-decimal space-y-1 pl-5">
                             <li>No Início, clique em <strong>Nova busca</strong>.</li>
                             <li>Mantenha a query <Code>mockito</Code> e o tipo <strong>Code Search</strong>; informe seu token do GitHub.</li>
@@ -863,7 +886,12 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Início */}
-                    <Section id="inicio" title="Tela Início" icon={<History className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="inicio" title="Tela Início" icon={<History className="h-5 w-5 text-cyan-400" />}>
+                        <p className="text-sm leading-relaxed text-slate-300">
+                            A tela inicial apresenta o projeto e as etapas do processo (buscar, filtrar, compilar e
+                            analisar). O botão <strong>Começar mineração</strong> rola suavemente até a área de ação,
+                            que oferece duas opções:
+                        </p>
                         <DefinitionTable
                             head={["Ação", "O que faz"]}
                             rows={[
@@ -891,7 +919,7 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Como a busca funciona */}
-                    <Section id="como-a-busca-funciona" title="Como a busca funciona" icon={<Search className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="como-a-busca-funciona" title="Como a busca funciona" icon={<Search className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             A plataforma usa a <strong>API REST de busca do GitHub</strong>. O texto da
                             query e os campos preenchidos no formulário são transformados em{" "}
@@ -899,9 +927,9 @@ export default function DocumentationPage() {
                             juntos formam uma única string de busca. Campos vazios são ignorados; valores
                             com espaço são colocados entre aspas automaticamente.
                         </p>
-                        <p className="font-semibold text-zinc-100">Exemplo — Code Search com arquivo e extensão preenchidos:</p>
+                        <p className="font-semibold text-slate-100">Exemplo — Code Search com arquivo e extensão preenchidos:</p>
                         <Pre>{"Query: mockito   Arquivo: pom.xml   Extensão: xml\n\n→  mockito filename:pom.xml extension:xml"}</Pre>
-                        <p className="font-semibold text-zinc-100">Exemplo — Repository Search:</p>
+                        <p className="font-semibold text-slate-100">Exemplo — Repository Search:</p>
                         <Pre>
                             {"Query: spring   Buscar em: readme   Stars: >=100   Criado desde: 01/01/2020\nFork: Não   Arquivado: Não   Visibilidade: Público\n\n→  spring in:readme stars:>=100 created:>=2020-01-01 language:Java fork:false archived:false is:public"}
                         </Pre>
@@ -911,11 +939,18 @@ export default function DocumentationPage() {
                             <Code>pom.xml</Code>).
                         </Callout>
 
-                        <h3 className="pt-2 text-base font-semibold text-zinc-100">Code Search × Repository Search</h3>
+                        <h3 className="pt-2 text-base font-semibold text-slate-100">Code Search × Repository Search</h3>
                         <p>
                             Cada tipo de busca do GitHub aceita um conjunto diferente de qualificadores.
                             A plataforma envia somente os que são válidos para o tipo escolhido —{" "}
-                            <strong>os demais campos são ignorados</strong>, mesmo se preenchidos.
+                            <strong>os demais campos são ignorados</strong>, mesmo se preenchidos. A exceção são{" "}
+                            <strong>Stars</strong> e <strong>Forks</strong>: no Code Search a plataforma os aplica
+                            depois da busca, consultando cada repositório encontrado.
+                        </p>
+                        <p>
+                            O campo <strong>Tipo de Busca</strong> tem apenas duas opções:{" "}
+                            <strong>Code Search</strong> e <strong>Repository Search</strong>. Não existe uma
+                            opção para usar os dois tipos ao mesmo tempo em uma mesma busca.
                         </p>
                         <DefinitionTable
                             head={["Tipo", "Campos que são aplicados"]}
@@ -925,8 +960,9 @@ export default function DocumentationPage() {
                                     value: (
                                         <>
                                             Query, Usuário, Organização, Repositório, Arquivo, Extensão, Caminho,
-                                            Ordenar por, Direção, Itens por página. Procura dentro do conteúdo dos
-                                            arquivos, somente na branch padrão e em arquivos menores que 384 KB.
+                                            Ordenar por, Direção, Itens por página e, aplicados pela plataforma após
+                                            a busca, Stars e Forks. Procura dentro do conteúdo dos arquivos,
+                                            somente na branch padrão e em arquivos menores que 384 KB.
                                         </>
                                     ),
                                 },
@@ -943,7 +979,7 @@ export default function DocumentationPage() {
                                     ),
                                 },
                                 {
-                                    key: <Badge>Ambos</Badge>,
+                                    key: <Badge>Plataforma (os dois tipos)</Badge>,
                                     value: "Versão Java, token, limite de repositórios e opções de execução são da plataforma e valem para os dois tipos.",
                                 },
                             ]}
@@ -958,7 +994,7 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Sintaxe */}
-                    <Section id="sintaxe" title="Sintaxe de valores" icon={<Code2 className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="sintaxe" title="Sintaxe de valores" icon={<Code2 className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             Campos numéricos (Stars, Forks, Tamanho, Seguidores, Quantidade de tópicos,
                             Good first issues, Help wanted issues) aceitam a mesma sintaxe de intervalos
@@ -977,6 +1013,14 @@ export default function DocumentationPage() {
                                 { key: <Code>*..n</Code>, value: "n ou menos (equivale a <=n). Ex.: *..10" },
                             ]}
                         />
+                        <Callout tone="warning" title="Stars e Forks no Code Search">
+                            Na <strong>Repository Search</strong> todos os formatos acima funcionam, pois o GitHub
+                            aplica o filtro na própria busca. Na <strong>Code Search</strong>, Stars e Forks são
+                            aplicados pela plataforma depois da busca e aceitam apenas <Code>n</Code>,{" "}
+                            <Code>&gt;n</Code>, <Code>&gt;=n</Code>, <Code>&lt;n</Code> e <Code>&lt;=n</Code>.
+                            Intervalos (<Code>n..m</Code>, <Code>n..*</Code>, <Code>*..n</Code>) não filtram nesse tipo.
+                            Tamanho, Seguidores e os demais campos numéricos só valem na Repository Search.
+                        </Callout>
                         <p>
                             Datas usam o formato <Code>AAAA-MM-DD</Code>. Os seletores de data do formulário
                             já montam <Code>&gt;=data</Code>. Para um intervalo de datas (ex.: criados em 2022),
@@ -995,27 +1039,35 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Campos */}
-                    <Section id="campos" title="Campos de pesquisa" icon={<SlidersHorizontal className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="campos" title="Campos de pesquisa" icon={<SlidersHorizontal className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             Referência de todos os campos da tela Mineração. Os campos principais ficam
                             sempre visíveis; os demais aparecem ao clicar em{" "}
                             <strong>Filtros avançados</strong>. O selo colorido indica em qual tipo de busca
-                            o campo é aplicado.
+                            o campo é aplicado: <Badge tone="sky">Code Search</Badge>,{" "}
+                            <Badge tone="emerald">Repository Search</Badge> ou{" "}
+                            <Badge tone="indigo">Code e Repository</Badge> quando o campo vale nos dois tipos.
+                            Lembre que o Tipo de Busca é sempre um só: Code Search <em>ou</em> Repository Search.
                         </p>
-                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-700/60 bg-zinc-800/60 p-3">
+                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-700/60 bg-slate-800/60 p-3">
                             <div className="relative min-w-[14rem] flex-1">
-                                <Filter className="absolute left-3 top-2.5 h-4 w-4 text-zinc-500" />
+                                <Filter className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
                                 <input
                                     type="text"
                                     value={fieldFilter}
                                     onChange={(event) => setFieldFilter(event.target.value)}
                                     placeholder="Procurar campo (ex.: stars, licença)…"
-                                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder-zinc-500 focus:border-indigo-500 focus:outline-none"
+                                    aria-label="Procurar campo de pesquisa"
+                                    className="w-full rounded-lg border border-slate-700 bg-slate-900 py-2 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-500 focus:outline-none"
                                 />
                             </div>
-                            <div className="flex gap-1 rounded-lg border border-zinc-700 bg-zinc-900 p-1 text-xs">
+                            <div
+                                role="group"
+                                aria-label="Filtrar campos por tipo de busca"
+                                className="flex gap-1 rounded-lg border border-slate-700 bg-slate-900 p-1 text-xs"
+                            >
                                 {([
-                                    ["all", "Todos"],
+                                    ["all", "Todos os campos"],
                                     ["code", "Code Search"],
                                     ["repositories", "Repository Search"],
                                 ] as const).map(([value, label]) => (
@@ -1023,10 +1075,11 @@ export default function DocumentationPage() {
                                         key={value}
                                         type="button"
                                         onClick={() => setAppliesFilter(value)}
+                                        aria-pressed={appliesFilter === value}
                                         className={`rounded-md px-2.5 py-1 font-semibold transition ${
                                             appliesFilter === value
-                                                ? "bg-indigo-600 text-white"
-                                                : "text-zinc-400 hover:text-zinc-100"
+                                                ? "bg-cyan-700 text-white"
+                                                : "text-slate-400 hover:text-slate-100"
                                         }`}
                                     >
                                         {label}
@@ -1040,7 +1093,7 @@ export default function DocumentationPage() {
                             if (groupFields.length === 0) return null;
                             return (
                                 <div key={group} className="space-y-3">
-                                    <h3 className="pt-2 text-base font-semibold text-zinc-100">{group}</h3>
+                                    <h3 className="pt-2 text-base font-semibold text-slate-100">{group}</h3>
                                     <div className="grid gap-3 lg:grid-cols-2">
                                         {groupFields.map((field) => (
                                             <FieldCard key={field.label} field={field} />
@@ -1050,12 +1103,12 @@ export default function DocumentationPage() {
                             );
                         })}
                         {filteredFields.length === 0 && (
-                            <p className="text-center text-zinc-500">Nenhum campo encontrado.</p>
+                            <p className="text-center text-slate-400">Nenhum campo encontrado.</p>
                         )}
                     </Section>
 
                     {/* ------------------------------------------------ Opções */}
-                    <Section id="opcoes" title="Opções de execução" icon={<PlayCircle className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="opcoes" title="Opções de execução" icon={<PlayCircle className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             As caixas de seleção abaixo do formulário definem <strong>o quanto</strong> cada
                             candidato será analisado. Quanto mais completa a análise, mais lenta a execução.
@@ -1063,16 +1116,16 @@ export default function DocumentationPage() {
                         <div className="grid gap-3 lg:grid-cols-2">
                             {OPTIONS.map((option) => (
                                 <Card key={option.label}>
-                                    <p className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
-                                        <CheckCircle2 className="h-4 w-4 text-indigo-400" />
+                                    <p className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                                        <CheckCircle2 className="h-4 w-4 text-cyan-400" />
                                         {option.label}
                                     </p>
-                                    <div className="mt-2 text-sm leading-6 text-zinc-300">{option.description}</div>
-                                    {option.tip && <p className="mt-2 text-xs text-zinc-400">{option.tip}</p>}
+                                    <div className="mt-2 text-sm leading-6 text-slate-300">{option.description}</div>
+                                    {option.tip && <p className="mt-2 text-xs text-slate-400">{option.tip}</p>}
                                 </Card>
                             ))}
                         </div>
-                        <h3 className="pt-2 text-base font-semibold text-zinc-100">Modos resultantes</h3>
+                        <h3 className="pt-2 text-base font-semibold text-slate-100">Modos resultantes</h3>
                         <DefinitionTable
                             head={["Combinação", "O que acontece"]}
                             rows={[
@@ -1088,23 +1141,23 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Execução */}
-                    <Section id="execucao" title="Acompanhando a execução" icon={<Timer className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="execucao" title="Acompanhando a execução" icon={<Timer className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             Ao clicar em <strong>Iniciar Mineração</strong>, o backend cria uma execução em
                             segundo plano e a interface consulta o andamento a cada 5 segundos. A tabela é
                             preenchida lote a lote, então dá para ver resultados antes do fim.
                         </p>
-                        <p className="font-semibold text-zinc-100">Status da execução</p>
+                        <p className="font-semibold text-slate-100">Status da execução</p>
                         <DefinitionTable
                             head={["Status", "Significado"]}
-                            rows={RUN_STATUSES.map((item) => ({ key: <Code>{item.value}</Code>, value: item.meaning }))}
+                            rows={RUN_STATUSES.map((item) => ({ key: <strong>{RUN_STATUS_LABELS[item.value] ?? item.value}</strong>, value: item.meaning }))}
                         />
-                        <p className="font-semibold text-zinc-100">Etapa atual (exibida após o status)</p>
+                        <p className="font-semibold text-slate-100">Etapa atual (exibida após o status)</p>
                         <DefinitionTable
                             head={["Etapa", "Significado"]}
-                            rows={PROGRESS_STAGES.map((item) => ({ key: <Code>{item.value}</Code>, value: item.meaning }))}
+                            rows={PROGRESS_STAGES.map((item) => ({ key: <strong>{PROGRESS_STAGE_LABELS[item.value] ?? item.value}</strong>, value: item.meaning }))}
                         />
-                        <p className="font-semibold text-zinc-100">Informações e botões da barra da execução</p>
+                        <p className="font-semibold text-slate-100">Informações e botões da barra da execução</p>
                         <DefinitionTable
                             head={["Item", "Descrição"]}
                             rows={[
@@ -1115,10 +1168,10 @@ export default function DocumentationPage() {
                                 { key: "Página / índice", value: "Em qual página do GitHub e em qual item a busca parou." },
                                 { key: "Lote", value: "Quantos candidatos são analisados por vez." },
                                 { key: "Aceitação", value: "Percentual de candidatos aceitos até agora." },
-                                { key: <strong>Cancelar</strong>, value: "Interrompe uma execução queued/running. O que já foi aceito fica salvo." },
+                                { key: <strong>Cancelar</strong>, value: "Interrompe uma execução que está na fila ou em execução. O que já foi aceito fica salvo." },
                                 {
                                     key: <strong>Retomar consulta</strong>,
-                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos.",
+                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos. Como o token digitado não é guardado, a retomada usa o token configurado no servidor (GITHUB_TOKEN no backend); se ele não estiver configurado, a retomada é recusada.",
                                 },
                                 { key: <strong>Ver estatísticas</strong>, value: "Abre a tela Estatísticas (habilitado quando há estatísticas)." },
                             ]}
@@ -1131,7 +1184,7 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Resultados */}
-                    <Section id="resultados" title="Tabela de resultados" icon={<Table2 className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="resultados" title="Tabela de resultados" icon={<Table2 className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             Acima da tabela há quatro indicadores rápidos: <strong>Total Encontrado</strong>,{" "}
                             <strong>Taxa de Compilação</strong>, <strong>Testes com Sucesso</strong> e{" "}
@@ -1166,7 +1219,7 @@ export default function DocumentationPage() {
                                 { key: "Ações", value: "Detalhes (abre o modal) e Link (abre o repositório no GitHub)." },
                             ]}
                         />
-                        <h3 className="pt-2 text-base font-semibold text-zinc-100">Filtros da tabela</h3>
+                        <h3 className="pt-2 text-base font-semibold text-slate-100">Filtros da tabela</h3>
                         <p>
                             A barra acima da tabela filtra apenas o que já foi carregado, sem nova chamada ao
                             GitHub: por <strong>nome</strong>, por <strong>versão Java</strong> e pelas
@@ -1177,7 +1230,7 @@ export default function DocumentationPage() {
                             as mesmas opções do formulário. Alterá-las também muda o que será usado na
                             próxima mineração.
                         </Callout>
-                        <h3 className="pt-2 text-base font-semibold text-zinc-100">Modal de detalhes</h3>
+                        <h3 className="pt-2 text-base font-semibold text-slate-100">Modal de detalhes</h3>
                         <ul className="list-disc space-y-1 pl-5">
                             <li><strong>Tempo de compilação</strong> e <strong>tempo de testagem</strong>.</li>
                             <li><strong>Frameworks de teste</strong> detectados (JUnit 4, JUnit 5, JUnit Vintage, TestNG, Spock, Cucumber, Karate).</li>
@@ -1209,7 +1262,7 @@ export default function DocumentationPage() {
                     </Section>
 
                     {/* ------------------------------------------------ Estatísticas */}
-                    <Section id="estatisticas" title="Estatísticas" icon={<BarChart3 className="h-5 w-5 text-indigo-400" />}>
+                    <Section id="estatisticas" title="Estatísticas" icon={<BarChart3 className="h-5 w-5 text-cyan-400" />}>
                         <p>
                             A tela Estatísticas mostra os indicadores da execução carregada no escopo
                             escolhido (Aceitos, Todos filtrados ou Eliminados). Os painéis de eliminação só
@@ -1261,6 +1314,10 @@ export default function DocumentationPage() {
                         {[
                             {
                                 q: "Preenchi Stars/Forks, mas os resultados não respeitaram o filtro.",
+                                a: "No Code Search, Stars e Forks são aplicados pela plataforma depois da busca e só aceitam >=, <=, >, < ou um número exato. Intervalos como 10..50 não filtram nesse tipo (use-os na Repository Search). Confira também se o valor está sem espaços ou texto extra.",
+                            },
+                            {
+                                q: "Preenchi Tamanho, Criado desde, Último push ou Seguidores, mas nada mudou.",
                                 a: "Esses filtros só existem na Repository Search. Com Code Search selecionado eles são ignorados. Troque o Tipo de Busca ou use org:/user:/repo: para restringir.",
                             },
                             {
@@ -1268,7 +1325,7 @@ export default function DocumentationPage() {
                                 a: "Muitos candidatos podem ter sido eliminados (versão Java, compilação, testes). Marque “Salvar repositórios eliminados” e consulte o painel “Maiores estágios de erro”. Se a busca foi esgotada, amplie a query.",
                             },
                             {
-                                q: "Aparece “failed” logo no começo.",
+                                q: "Aparece “Falhou” logo no começo.",
                                 a: "Normalmente é token ausente/inválido ou limite da API do GitHub atingido. Confira o token e aguarde um minuto antes de retomar.",
                             },
                             {
@@ -1281,11 +1338,11 @@ export default function DocumentationPage() {
                             },
                         ].map((item) => (
                             <Card key={item.q}>
-                                <p className="flex items-start gap-2 font-semibold text-zinc-100">
-                                    <Database className="mt-1 h-4 w-4 shrink-0 text-indigo-400" />
+                                <p className="flex items-start gap-2 font-semibold text-slate-100">
+                                    <Database className="mt-1 h-4 w-4 shrink-0 text-cyan-400" />
                                     {item.q}
                                 </p>
-                                <p className="mt-1 pl-6 text-zinc-400">{item.a}</p>
+                                <p className="mt-1 pl-6 text-slate-400">{item.a}</p>
                             </Card>
                         ))}
                     </Section>
