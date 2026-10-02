@@ -18,6 +18,7 @@ from app.services.miner import (
     analyze_candidate,
     analyze_mined_repositories,
     candidate_matches_metadata_filter,
+    candidate_pom_lookup_paths,
     content_has_spring_import,
     enrich_candidate_metadata,
     pom_indicates_spring,
@@ -404,7 +405,94 @@ class PipelineControlsTest(unittest.TestCase):
         fetch_directory_items.assert_not_called()
         fetch_commit.assert_called_once()
 
+    def test_pom_lookup_paths_walk_up_from_matched_file_to_root(self) -> None:
+        # Projetos Maven multi-modulo tem o pom.xml do modulo junto do codigo,
+        # nao na raiz do repositorio. A busca deve tentar cada pasta ancestral
+        # do arquivo encontrado antes de desistir.
+        paths = candidate_pom_lookup_paths("modules/service-a/src/main/java/com/acme/App.java")
+
+        self.assertEqual(
+            paths,
+            [
+                "modules/service-a/src/main/java/com/pom.xml",
+                "modules/service-a/src/main/java/pom.xml",
+                "modules/service-a/src/main/pom.xml",
+                "modules/service-a/src/pom.xml",
+                "modules/service-a/pom.xml",
+                "modules/pom.xml",
+                "pom.xml",
+            ],
+        )
+
+    def test_pom_lookup_paths_without_matched_file_only_checks_root(self) -> None:
+        self.assertEqual(candidate_pom_lookup_paths(None), ["pom.xml"])
+
+    def test_candidate_is_accepted_via_nested_module_pom_when_root_pom_is_missing(self) -> None:
+        # Repete o cenario reportado: busca de codigo por extension:java sem
+        # filename:pom.xml, onde o repositorio e Maven multi-modulo e nao tem
+        # pom.xml na raiz. Antes da correcao, isso rejeitava 100% dos
+        # candidatos mesmo quando o modulo correspondente tinha um pom.xml
+        # valido.
+        candidate = RepoCandidate(
+            full_name="owner/multi-module",
+            html_url="https://github.com/owner/multi-module",
+            source_filter="java-filter",
+            raw={
+                "default_branch": "main",
+                "_matched_path": "modules/service-a/src/main/java/com/acme/JdbcService.java",
+            },
+        )
+        search_filter = GitHubSearchFilter(
+            name="java-filter",
+            search_type=GitHubSearchType.CODE,
+            query="jdbc template extension:java",
+        )
+        module_pom = "<project><properties><java.version>17</java.version></properties></project>"
+
+        def file_content(_session, _full_name, path, _delay):
+            if path == "modules/service-a/src/main/java/com/acme/JdbcService.java":
+                return "class JdbcService {}"
+            if path == "modules/service-a/pom.xml":
+                return module_pom
+            return None
+
+        with patch("app.services.miner.fetch_file_content", side_effect=file_content):
+            with patch("app.services.miner.fetch_ref_commit_sha", return_value="abc123"):
+                result = analyze_candidate(Mock(), candidate, search_filter, delay=0)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(result.metadata["java_version"], "17")
+        self.assertEqual(result.metadata["matched_pom_path"], "modules/service-a/pom.xml")
+
+    def test_candidate_is_rejected_when_no_pom_exists_in_any_ancestor_directory(self) -> None:
+        candidate = RepoCandidate(
+            full_name="owner/gradle-project",
+            html_url="https://github.com/owner/gradle-project",
+            source_filter="java-filter",
+            raw={
+                "default_branch": "main",
+                "_matched_path": "src/main/java/com/acme/JdbcService.java",
+            },
+        )
+        search_filter = GitHubSearchFilter(
+            name="java-filter",
+            search_type=GitHubSearchType.CODE,
+            query="jdbc template extension:java",
+        )
+
+        def file_content(_session, _full_name, path, _delay):
+            if path == "src/main/java/com/acme/JdbcService.java":
+                return "class JdbcService {}"
+            return None
+
+        with patch("app.services.miner.fetch_file_content", side_effect=file_content):
+            result = analyze_candidate(Mock(), candidate, search_filter, delay=0)
+
+        self.assertIsNone(result)
+
     def test_spring_detection_helpers(self) -> None:
+
         self.assertTrue(pom_indicates_spring("<artifactId>spring-boot-starter</artifactId>"))
         self.assertTrue(content_has_spring_import("import org.springframework.context.ApplicationContext;"))
         self.assertFalse(content_has_spring_import("import com.example.SpringLike;"))

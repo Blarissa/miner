@@ -73,6 +73,7 @@ REPOSITORY_URL = f"{config.settings.github_base_url}/repos/{{full_name}}"
 CONTENTS_URL = f"{config.settings.github_base_url}/repos/{{full_name}}/contents/{{path}}"
 COMMITS_URL = f"{config.settings.github_base_url}/repos/{{full_name}}/commits/{{ref}}"
 ROOT_POM_PATH = "pom.xml"
+MAX_POM_ANCESTOR_LEVELS = 6
 MAIN_JAVA_PATH = "src/main/java"
 MAX_MAIN_SOURCE_FILES_TO_CHECK = 200
 
@@ -836,6 +837,31 @@ def apply_content_rules(
     return True, metadata
 
 
+def candidate_pom_lookup_paths(content_path: str | None) -> list[str]:
+    """Caminhos de pom.xml a tentar: da pasta do arquivo encontrado (quando
+    houver) subindo diretorio a diretorio ate a raiz do repositorio. Isso
+    cobre projetos Maven multi-modulo, onde o pom.xml do modulo nao fica na
+    raiz do repositorio."""
+    paths: list[str] = []
+    if content_path:
+        parts = [part for part in content_path.strip("/").split("/") if part]
+        depth = min(len(parts) - 1, MAX_POM_ANCESTOR_LEVELS)
+        for index in range(depth, 0, -1):
+            directory = "/".join(parts[:index])
+            paths.append(f"{directory}/{ROOT_POM_PATH}")
+
+    if ROOT_POM_PATH not in paths:
+        paths.append(ROOT_POM_PATH)
+
+    seen: set[str] = set()
+    unique_paths: list[str] = []
+    for path in paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+    return unique_paths
+
+
 def analyze_candidate(
     session: requests.Session,
     candidate: RepoCandidate,
@@ -876,6 +902,11 @@ def analyze_candidate(
     if content_path:
         content = fetch_file_content(session, candidate.full_name, content_path, delay)
         if content is None:
+            log.info(
+                "Candidato rejeitado | %s | motivo=arquivo_correspondente_indisponivel | arquivo=%s",
+                candidate.full_name,
+                content_path,
+            )
             return None
 
         metadata["matched_file"] = content_path
@@ -887,14 +918,34 @@ def analyze_candidate(
 
         ok, extracted = apply_content_rules(content, search_filter.content_rules)
         if not ok:
+            log.info(
+                "Candidato rejeitado | %s | motivo=regra_de_conteudo_nao_atendida | arquivo=%s",
+                candidate.full_name,
+                content_path,
+            )
             return None
         metadata.update(extracted)
     elif search_filter.content_rules:
+        log.info(
+            "Candidato rejeitado | %s | motivo=regra_de_conteudo_sem_arquivo_correspondente",
+            candidate.full_name,
+        )
         return None
 
     if pom_content is None:
-        pom_content = fetch_file_content(session, candidate.full_name, ROOT_POM_PATH, delay)
+        pom_lookup_path = content_path if content_path and not content_path.lower().endswith("pom.xml") else None
+        for pom_path in candidate_pom_lookup_paths(pom_lookup_path):
+            pom_content = fetch_file_content(session, candidate.full_name, pom_path, delay)
+            if pom_content is not None:
+                metadata["matched_pom_path"] = pom_path
+                break
+
         if pom_content is None:
+            log.info(
+                "Candidato rejeitado | %s | motivo=pom_xml_nao_encontrado | tentativas=%s",
+                candidate.full_name,
+                candidate_pom_lookup_paths(pom_lookup_path),
+            )
             return None
 
         java_version = extract_java_version_from_pom(pom_content)
