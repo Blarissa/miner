@@ -45,8 +45,10 @@ RUN mkdir -p /app/data app/services/repos app/services/logs \
     && useradd --create-home --shell /bin/bash appuser \
     && chown -R appuser:appuser /app /home/laris/.sdkman
 
-USER appuser
+# USER appuser  # antes: rodava direto como appuser; agora o entrypoint ajusta /app/data e troca para appuser
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 10000
 
-CMD ["bash", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+# CMD ["bash", "-lc", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

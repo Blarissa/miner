@@ -224,7 +224,16 @@ def init_database() -> None:
         if not is_database_corruption_error(exc):
             raise
 
-        backed_up = backup_corrupt_database()
+        try:
+            backed_up = backup_corrupt_database()
+        except PermissionError as permission_error:
+            log.error(
+                "Sem permissao para mover o banco %s (%s). Ajuste o dono/permissao da pasta "
+                "do banco para o usuario que roda o backend (ex.: chown no disco montado).",
+                DATABASE_PATH,
+                permission_error,
+            )
+            raise
         log.error(
             "Banco SQLite corrompido em %s; backups criados em %s. Recriando banco vazio.",
             DATABASE_PATH,
