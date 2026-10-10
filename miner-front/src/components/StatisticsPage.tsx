@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import type { CountPercentageStat, DurationStat, RateStat, RepositoryStatistics } from "../models/types";
+import type { CountPercentageStat, DurationStat, OutcomeStat, RateStat, RepositoryStatistics } from "../models/types";
 
 interface StatisticsPageProps {
     statistics: RepositoryStatistics | null;
@@ -47,6 +47,92 @@ function SummaryCard({
             </span>
             <p className={`text-2xl font-bold mt-1 ${toneClass}`}>{value}</p>
             {detail && <p className="text-xs text-slate-400 mt-1">{detail}</p>}
+        </div>
+    );
+}
+
+function FunnelChart({ steps }: { steps: ReadonlyArray<readonly [string, number]> }) {
+    const first = steps[0]?.[1] ?? 0;
+
+    if (first <= 0) {
+        return <p className="text-sm text-slate-400">Sem repositórios pesquisados no escopo.</p>;
+    }
+
+    return (
+        <ol className="space-y-2" aria-label="Funil de análise">
+            {steps.map(([label, value], index) => {
+                const previous = index === 0 ? value : steps[index - 1][1];
+                const widthPercent = Math.max((value / first) * 100, value > 0 ? 2 : 0);
+                const retained = previous > 0 ? Math.round((value / previous) * 100) : 0;
+                return (
+                    <li key={label} className="grid grid-cols-[7rem_1fr_9rem] items-center gap-3 text-xs">
+                        <span className="text-slate-300 truncate">{label}</span>
+                        <div className="h-6 rounded bg-slate-900 overflow-hidden">
+                            <div
+                                className="h-full rounded bg-cyan-500/80"
+                                style={{ width: `${widthPercent}%` }}
+                            />
+                        </div>
+                        <span className="font-mono text-slate-300 text-right">
+                            {value}
+                            {index > 0 && (
+                                <span className="text-slate-500"> · {retained}% da etapa anterior</span>
+                            )}
+                        </span>
+                    </li>
+                );
+            })}
+        </ol>
+    );
+}
+
+const OUTCOME_SEGMENTS = [
+    { key: "tests_passed", label: "Testes passaram", className: "bg-emerald-500" },
+    { key: "tests_failed", label: "Testes falharam", className: "bg-amber-500" },
+    { key: "no_tests", label: "Sem testes", className: "bg-slate-500" },
+    { key: "not_compiled", label: "Não compilou", className: "bg-rose-500" },
+    { key: "not_analyzed", label: "Não analisado", className: "bg-slate-700" },
+] as const;
+
+function OutcomeStackedBars({ rows }: { rows: OutcomeStat[] }) {
+    const visibleRows = rows.filter((row) => row.value.trim().toLowerCase() !== "unknown" || row.total > 0);
+
+    if (visibleRows.length === 0) {
+        return <p className="text-sm text-slate-400">Sem dados de resultado por versão do Java no escopo.</p>;
+    }
+
+    return (
+        <div className="space-y-3">
+            <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
+                {OUTCOME_SEGMENTS.map((segment) => (
+                    <li key={segment.key} className="inline-flex items-center gap-1.5">
+                        <span className={`h-2.5 w-2.5 rounded-sm ${segment.className}`} />
+                        {segment.label}
+                    </li>
+                ))}
+            </ul>
+            {visibleRows.map((row) => (
+                <div key={row.value} className="grid grid-cols-[5rem_1fr_3rem] items-center gap-3 text-xs">
+                    <span className="text-slate-300 truncate">Java {row.value}</span>
+                    <div
+                        className="flex h-5 overflow-hidden rounded bg-slate-900"
+                        role="img"
+                        aria-label={OUTCOME_SEGMENTS.map((segment) => `${segment.label}: ${row[segment.key]}`).join(", ")}
+                    >
+                        {OUTCOME_SEGMENTS.map((segment) =>
+                            row[segment.key] > 0 ? (
+                                <div
+                                    key={segment.key}
+                                    className={segment.className}
+                                    style={{ width: `${(row[segment.key] / row.total) * 100}%` }}
+                                    title={`${segment.label}: ${row[segment.key]}`}
+                                />
+                            ) : null,
+                        )}
+                    </div>
+                    <span className="font-mono text-slate-400 text-right">{row.total}</span>
+                </div>
+            ))}
         </div>
     );
 }
@@ -277,20 +363,17 @@ export default function StatisticsPage({
 
                 {showEliminatedRepositoryStats && (
                     <Panel title="Funil de análise" icon={<Layers3 className="h-4 w-4 text-cyan-400" />}>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {funnelItems.map(([label, value]) => (
-                                <div key={label} className="bg-slate-900/60 border border-slate-700/60 rounded-lg p-4">
-                                    <span className="text-xs text-slate-400">{label}</span>
-                                    <p className="text-xl font-bold text-slate-100 mt-1">{value}</p>
-                                </div>
-                            ))}
-                        </div>
+                        <FunnelChart steps={funnelItems} />
                     </Panel>
                 )}
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                     <Panel title="Java declarado" icon={<Code2 className="h-4 w-4 text-cyan-400" />}>
                         <CountList items={declaredJavaVersions} emptyText="Sem versões Java declaradas no escopo." />
+                    </Panel>
+
+                    <Panel title="Resultado por versão do Java" icon={<BarChart3 className="h-4 w-4 text-cyan-400" />}>
+                        <OutcomeStackedBars rows={statistics.outcome_by_java_version ?? []} />
                     </Panel>
 
                     {hasJavaUpgrade && (

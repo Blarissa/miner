@@ -126,6 +126,26 @@ class PipelineControlsTest(unittest.TestCase):
         self.assertEqual(filters[0].stars, ">=100")
         self.assertEqual(filters[1].stars, ">=100")
 
+    def test_statistics_outcome_by_java_version(self) -> None:
+        statistics = build_statistics(
+            [
+                {"java_version": "17", "compiled": True, "has_tests": True, "tests_passed": True, "eliminated": False},
+                {"java_version": "17", "compiled": True, "has_tests": True, "tests_passed": False, "eliminated": True},
+                {"java_version": "17", "compiled": False, "eliminated": True},
+                {"java_version": "8", "compiled": True, "has_tests": False, "eliminated": True},
+                {"java_version": "8"},
+            ],
+            "all",
+        )
+
+        rows = {row["value"]: row for row in statistics["outcome_by_java_version"]}
+        self.assertEqual(rows["17"]["total"], 3)
+        self.assertEqual(
+            (rows["17"]["tests_passed"], rows["17"]["tests_failed"], rows["17"]["not_compiled"]),
+            (1, 1, 1),
+        )
+        self.assertEqual((rows["8"]["no_tests"], rows["8"]["not_analyzed"]), (1, 1))
+
     def test_statistics_separates_not_analyzed_from_none_detected(self) -> None:
         statistics = build_statistics(
             [

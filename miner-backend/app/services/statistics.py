@@ -157,6 +157,31 @@ def filter_by_scope(
     return [repo for repo in repositories if is_eliminated(repo)]
 
 
+OUTCOME_KEYS = ("tests_passed", "tests_failed", "no_tests", "not_compiled", "not_analyzed")
+
+
+def repo_outcome(analyzed: bool, compiled: bool, has_tests: bool, tests_passed: bool) -> str:
+    """Resultado de um repositório, em ordem de profundidade da análise."""
+    if not analyzed:
+        return "not_analyzed"
+    if not compiled:
+        return "not_compiled"
+    if not has_tests:
+        return "no_tests"
+    return "tests_passed" if tests_passed else "tests_failed"
+
+
+def outcome_stats(groups: dict[str, Counter[str]]) -> list[dict[str, Any]]:
+    """Resultado por grupo (ex.: versão do Java), pronto para barras empilhadas."""
+    rows = []
+    for value, counter in groups.items():
+        row: dict[str, Any] = {"value": value, "total": sum(counter.values())}
+        for key in OUTCOME_KEYS:
+            row[key] = counter.get(key, 0)
+        rows.append(row)
+    return sorted(rows, key=lambda row: (-row["total"], row["value"]))
+
+
 def counter_stats(counter: Counter[str], total: int) -> list[dict[str, Any]]:
     return [
         {
@@ -240,6 +265,7 @@ def build_statistics(
     compile_failed_by_java: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0})
     compile_by_build: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0})
     compile_by_framework: dict[str, dict[str, int]] = defaultdict(lambda: {"total": 0, "success": 0})
+    outcome_by_java: dict[str, Counter[str]] = defaultdict(Counter)
 
     for repo in repositories:
         accepted = is_accepted(repo)
@@ -291,6 +317,7 @@ def build_statistics(
         if eliminated:
             error_stage_counter[str(repo.get("error_stage") or "unknown")] += 1
 
+        outcome_by_java[java_version][repo_outcome(analyzed, compiled, has_tests, tests_passed)] += 1
         compile_by_build[build]["total"] += 1
         compile_by_build[build]["success"] += int(compiled)
         compile_by_framework[framework]["total"] += 1
@@ -350,6 +377,7 @@ def build_statistics(
             "accepted_rate": pct(accepted_total, total),
             "eliminated_rate": pct(eliminated_total, total),
         },
+        "outcome_by_java_version": outcome_stats(outcome_by_java),
         "compiled_but_tests_failed_by_java_version": rate_group_stats_from_groups(
             compile_failed_by_java
         ),

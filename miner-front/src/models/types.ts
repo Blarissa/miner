@@ -97,9 +97,20 @@ export interface RepositoryStatistics {
         accepted_rate: number;
         eliminated_rate: number;
     };
+    outcome_by_java_version?: OutcomeStat[];
     compiled_but_tests_failed_by_java_version: RateStat[];
     compilation_rate_by_build_tool: RateStat[];
     compilation_rate_by_test_framework: RateStat[];
+}
+
+export interface OutcomeStat {
+    value: string;
+    total: number;
+    tests_passed: number;
+    tests_failed: number;
+    no_tests: number;
+    not_compiled: number;
+    not_analyzed: number;
 }
 
 export type MiningRunStatusValue = "queued" | "running" | "completed" | "failed" | "cancelled";
