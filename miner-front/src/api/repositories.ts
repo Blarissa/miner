@@ -56,15 +56,55 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+const NETWORK_ERROR_MESSAGE =
+    "Não foi possível conectar ao servidor. Verifique se o backend está ligado " +
+    "(no Render ele pode levar cerca de um minuto para acordar) e tente novamente.";
+
+function friendlyHttpMessage(status: number): string {
+    if (status === 401 || status === 403) return "Acesso negado. Confira se o token do GitHub é válido e tem permissão.";
+    if (status === 404) return "Item não encontrado no servidor. Ele pode ter sido apagado quando o servidor reiniciou.";
+    if (status === 409) return "Esta consulta já está em andamento.";
+    if (status === 422) return "Algum campo do formulário está inválido. Revise os filtros e tente de novo.";
+    if (status === 429) return "Muitas requisições ao GitHub. Aguarde alguns minutos e tente novamente.";
+    if (status === 502 || status === 503 || status === 504) {
+        return "O servidor está indisponível ou reiniciando. Aguarde um instante e tente novamente.";
+    }
+    if (status >= 500) return "Erro interno no servidor. Tente novamente; se persistir, veja os logs do backend.";
+    return `O servidor recusou a requisição (erro ${status}).`;
+}
+
+function detailMessage(detail: unknown): string | null {
+    if (typeof detail === "string" && detail.trim()) return detail;
+    if (Array.isArray(detail)) {
+        // Erros de validação do FastAPI: [{ loc: [...], msg: "..." }]
+        const parts = detail
+            .map((item) => {
+                const field = Array.isArray(item?.loc) ? item.loc.filter((part: unknown) => part !== "body").join(".") : "";
+                const message = typeof item?.msg === "string" ? item.msg : "";
+                return message ? (field ? `${field}: ${message}` : message) : "";
+            })
+            .filter(Boolean);
+        return parts.length > 0 ? `Dados inválidos (${parts.join("; ")}).` : null;
+    }
+    return null;
+}
+
 async function requestJson<T>(
     path: string,
     options?: RequestInit,
 ): Promise<T> {
-    const response = await fetch(`${API_URL}${path}`, options);
+    let response: Response;
+    try {
+        response = await fetch(`${API_URL}${path}`, options);
+    } catch (error) {
+        // "Failed to fetch": backend desligado, dormindo (Render), sem internet ou CORS.
+        console.error("Falha de rede ao chamar a API:", error);
+        throw new Error(NETWORK_ERROR_MESSAGE);
+    }
 
     if (!response.ok) {
         const errData = await response.json().catch(() => null);
-        throw new Error(errData?.detail || `Erro HTTP ${response.status}`);
+        throw new Error(detailMessage(errData?.detail) || friendlyHttpMessage(response.status));
     }
 
     return response.json();
