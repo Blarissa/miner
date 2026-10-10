@@ -85,6 +85,14 @@ JDK_MAP: dict[str, Path] = {
     "25":  JDK_BASE_DIR / "25-open",
 }
 
+# Layout alternativo (imagem Docker com JDKs oficiais): uma pasta por versão em JDK_BASE_DIR
+# (ex.: /opt/jdks/17). Só as versões presentes existem; as demais usam allow_jdk_upgrade.
+if os.environ.get("JDK_LAYOUT", "sdkman").lower() == "versions":
+    JDK_MAP = {
+        **{f"1.{n}": JDK_BASE_DIR / str(n) for n in (6, 7, 8)},
+        **{str(n): JDK_BASE_DIR / str(n) for n in (6, 7, 8, 11, 17, 21, 25)},
+    }
+
 VERSIONS_ASC  = ["6","7","8","11","14","15","16","17","18","19","20","21","22","23","25"]
 MAVEN_MIN_VER = "8"   # Maven precisa de Java ≥ 8 para iniciar
 
