@@ -410,10 +410,74 @@ def detect_patterns(content: str, patterns_by_name: dict[str, list[str]]) -> lis
     ]
 
 
-def detect_test_dependencies_from_pom(pom_path: Path) -> dict[str, str]:
+# Dependências que trazem bibliotecas de teste de forma transitiva (não aparecem no pom.xml).
+# Cada entrada: padrão no pom -> categoria -> nomes (iguais às chaves dos *_PATTERNS).
+IMPLICIT_TEST_DEPENDENCIES: dict[str, dict[str, list[str]]] = {
+    r"<artifactId>\s*spring-boot-starter-test\s*</artifactId>": {
+        "test_frameworks": ["JUnit 5"],
+        "mock_libraries": ["Mockito"],
+        "assertion_libraries": ["AssertJ", "Hamcrest", "JSONAssert"],
+    },
+    r"<artifactId>\s*quarkus-junit5(?:-[^<]+)?\s*</artifactId>": {
+        "test_frameworks": ["JUnit 5"],
+    },
+    r"<artifactId>\s*micronaut-test-junit5\s*</artifactId>": {
+        "test_frameworks": ["JUnit 5"],
+    },
+}
+
+MAX_MODULE_POMS = 50
+MAX_MODULE_DEPTH = 3
+
+
+def _collect_pom_contents(root_pom: Path) -> list[str]:
+    """Lê o pom.xml da raiz e os dos módulos filhos (`<module>`), sem sair do projeto."""
+    contents: list[str] = []
+    seen: set[Path] = set()
     try:
-        content = pom_path.read_text(encoding="utf-8", errors="ignore")
+        root_dir = root_pom.parent.resolve()
     except OSError:
+        return contents
+    queue: deque[tuple[Path, int]] = deque([(root_pom, 0)])
+    while queue and len(seen) < MAX_MODULE_POMS:
+        pom, depth = queue.popleft()
+        try:
+            key = pom.resolve()
+            if key in seen:
+                continue
+            seen.add(key)
+            text = pom.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        text = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+        contents.append(text)
+        if depth >= MAX_MODULE_DEPTH:
+            continue
+        for module in re.findall(r"<module>\s*([^<]+?)\s*</module>", text):
+            child = pom.parent / module
+            if child.is_dir():
+                child = child / "pom.xml"
+            try:
+                child.resolve().relative_to(root_dir)
+            except (OSError, ValueError):
+                continue
+            if child.is_file():
+                queue.append((child, depth + 1))
+    return contents
+
+
+def _spring_boot_parent_before_2_2(content: str) -> bool:
+    match = re.search(
+        r"<parent>.*?<artifactId>\s*spring-boot-starter-parent\s*</artifactId>.*?<version>\s*(\d+)\.(\d+)",
+        content,
+        re.DOTALL,
+    )
+    return bool(match) and (int(match.group(1)), int(match.group(2))) < (2, 2)
+
+
+def detect_test_dependencies_from_pom(pom_path: Path) -> dict[str, str]:
+    contents = _collect_pom_contents(pom_path)
+    if not contents:
         return {
             "test_frameworks": "",
             "mock_libraries": "",
@@ -421,11 +485,33 @@ def detect_test_dependencies_from_pom(pom_path: Path) -> dict[str, str]:
             "integration_test_tools": "",
         }
 
+    content = "\n".join(contents)
+    pattern_sets = {
+        "test_frameworks": TEST_FRAMEWORK_PATTERNS,
+        "mock_libraries": MOCK_LIBRARY_PATTERNS,
+        "assertion_libraries": ASSERTION_LIBRARY_PATTERNS,
+        "integration_test_tools": INTEGRATION_TEST_TOOL_PATTERNS,
+    }
+    found: dict[str, set[str]] = {
+        category: set(detect_patterns(content, patterns))
+        for category, patterns in pattern_sets.items()
+    }
+
+    # Bibliotecas transitivas (ex.: spring-boot-starter-test).
+    for dependency_pattern, provided in IMPLICIT_TEST_DEPENDENCIES.items():
+        if not re.search(dependency_pattern, content, re.IGNORECASE):
+            continue
+        for category, names in provided.items():
+            found[category].update(names)
+    if "JUnit 5" in found["test_frameworks"] and _spring_boot_parent_before_2_2(content):
+        if re.search(r"<artifactId>\s*spring-boot-starter-test\s*</artifactId>", content):
+            found["test_frameworks"].discard("JUnit 5")
+            found["test_frameworks"].add("JUnit 4")
+
+    # Mantém a ordem das listas de padrões.
     return {
-        "test_frameworks": ", ".join(detect_patterns(content, TEST_FRAMEWORK_PATTERNS)),
-        "mock_libraries": ", ".join(detect_patterns(content, MOCK_LIBRARY_PATTERNS)),
-        "assertion_libraries": ", ".join(detect_patterns(content, ASSERTION_LIBRARY_PATTERNS)),
-        "integration_test_tools": ", ".join(detect_patterns(content, INTEGRATION_TEST_TOOL_PATTERNS)),
+        category: ", ".join(name for name in patterns if name in found[category])
+        for category, patterns in pattern_sets.items()
     }
 
 

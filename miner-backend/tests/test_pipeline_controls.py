@@ -695,6 +695,56 @@ class PipelineControlsTest(unittest.TestCase):
             self.assertEqual(dependencies["assertion_libraries"], "")
             self.assertEqual(dependencies["integration_test_tools"], "")
 
+    def test_spring_boot_starter_test_brings_transitive_libraries(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            pom = Path(tmp) / "pom.xml"
+            pom.write_text(
+                "<project><parent><artifactId>spring-boot-starter-parent</artifactId>"
+                "<version>3.2.1</version></parent><dependencies><dependency>"
+                "<artifactId>spring-boot-starter-test</artifactId></dependency></dependencies></project>",
+                encoding="utf-8",
+            )
+
+            dependencies = detect_test_dependencies_from_pom(pom)
+
+            self.assertEqual(dependencies["test_frameworks"], "JUnit 5")
+            self.assertEqual(dependencies["mock_libraries"], "Mockito")
+            self.assertEqual(dependencies["assertion_libraries"], "AssertJ, Hamcrest, JSONAssert")
+            self.assertEqual(dependencies["integration_test_tools"], "Spring Boot Test")
+
+    def test_old_spring_boot_starter_test_uses_junit_4(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            pom = Path(tmp) / "pom.xml"
+            pom.write_text(
+                "<project><parent><artifactId>spring-boot-starter-parent</artifactId>"
+                "<version>2.1.5.RELEASE</version></parent><dependencies><dependency>"
+                "<artifactId>spring-boot-starter-test</artifactId></dependency></dependencies></project>",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(detect_test_framework_from_pom(pom), "JUnit 4")
+
+    def test_module_poms_are_read_and_commented_ones_ignored(self) -> None:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+            root = Path(tmp)
+            (root / "core").mkdir()
+            (root / "pom.xml").write_text(
+                "<project><modules><module>core</module><module>../fora</module>"
+                "<!-- <module>velho</module> --></modules></project>",
+                encoding="utf-8",
+            )
+            (root / "core" / "pom.xml").write_text(
+                "<project><dependencies><dependency><groupId>org.mockito</groupId>"
+                "<artifactId>mockito-core</artifactId></dependency>"
+                "<!-- <artifactId>testng</artifactId> --></dependencies></project>",
+                encoding="utf-8",
+            )
+
+            dependencies = detect_test_dependencies_from_pom(root / "pom.xml")
+
+            self.assertEqual(dependencies["mock_libraries"], "Mockito")
+            self.assertEqual(dependencies["test_frameworks"], "")
+
     def test_unknown_test_framework_returns_empty_text(self) -> None:
         with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             pom = Path(tmp) / "pom.xml"
