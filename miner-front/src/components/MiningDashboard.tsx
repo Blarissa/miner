@@ -52,7 +52,8 @@ interface MiningDashboardProps {
 const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     queries: ["mockito"],
     search_type: "code",
-    file_path: "",
+    // file_path: "",  // valor anterior (commit bc4db50)
+    file_path: "pom.xml",
     max_repos: 20,
     max_workers: 4,
     analyzer_workers: 4,
@@ -86,8 +87,10 @@ const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     template: "",
     good_first_issues: "",
     help_wanted_issues: "",
-    filename: "",
-    extension: "",
+    // filename: "",   // valor anterior (commit bc4db50)
+    // extension: "",  // valor anterior (commit bc4db50)
+    filename: "pom.xml",
+    extension: "xml",
     path: "",
     sort: "",
     order: "",
