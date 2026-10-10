@@ -340,8 +340,9 @@ export default function MiningDashboard({
         setRunStatus(result.status);
         setLastRunIncludedTests(includedTests);
         onEliminatedRepositoryStatsVisibilityChange(persistedEliminatedRepositories);
-        onStatisticsChange(result.statistics);
-    }, [onEliminatedRepositoryStatsVisibilityChange, onStatisticsChange]);
+        // onStatisticsChange(result.statistics);  // só atualizava o pai; o botão usa o estado local
+        setStatistics(result.statistics);
+    }, [onEliminatedRepositoryStatsVisibilityChange, setStatistics]);
 
     const loadSavedRun = useCallback(async (runId: number) => {
         setLoading(true);
@@ -361,14 +362,15 @@ export default function MiningDashboard({
             setLastTotal(repositoriesResponse.total);
             setLastRunIncludedTests(Boolean(status.require_tests_passed));
             onEliminatedRepositoryStatsVisibilityChange(Boolean(status.persist_eliminated_repositories));
-            onStatisticsChange(statisticsResponse);
+            // onStatisticsChange(statisticsResponse);  // só atualizava o pai; o botão "Ver estatísticas" usa o estado local
+            setStatistics(statisticsResponse);
         } catch (error: unknown) {
             console.error("Erro ao carregar consulta antiga:", error);
             setErrorBanner(`Falha ao carregar consulta antiga: ${errorMessage(error)}`);
         } finally {
             setLoading(false);
         }
-    }, [onEliminatedRepositoryStatsVisibilityChange, onStatisticsChange]);
+    }, [onEliminatedRepositoryStatsVisibilityChange, setStatistics]);
 
     useEffect(() => {
         if (initialRunId && initialRunId > 0) {
