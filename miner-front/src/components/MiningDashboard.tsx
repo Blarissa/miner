@@ -242,7 +242,7 @@ export default function MiningDashboard({
         onStatisticsChange(value); 
     }, [onStatisticsChange]);
 
-    const DEFAULT_JAVA_VERSIONS = ["6", "7", "8", "11", "17", "21"];
+    const DEFAULT_JAVA_VERSIONS = ["6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26"];
     const javaVersionOptions = useMemo(() => {
         if (statistics?.java_versions?.length) {
             return statistics.java_versions
@@ -583,9 +583,24 @@ export default function MiningDashboard({
                                     <option value="6">Java 6</option>
                                     <option value="7">Java 7</option>
                                     <option value="8">Java 8</option>
+                                    <option value="9">Java 9</option>
+                                    <option value="10">Java 10</option>
                                     <option value="11">Java 11</option>
+                                    <option value="12">Java 12</option>
+                                    <option value="13">Java 13</option>
+                                    <option value="14">Java 14</option>
+                                    <option value="15">Java 15</option>
+                                    <option value="16">Java 16</option>
                                     <option value="17">Java 17</option>
+                                    <option value="18">Java 18</option>
+                                    <option value="19">Java 19</option>
+                                    <option value="20">Java 20</option>
                                     <option value="21">Java 21</option>
+                                    <option value="22">Java 22</option>
+                                    <option value="23">Java 23</option>
+                                    <option value="24">Java 24</option>
+                                    <option value="25">Java 25</option>
+                                    <option value="26">Java 26</option>
                                 </Select>
                             </div>
 

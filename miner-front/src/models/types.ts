@@ -178,7 +178,7 @@ export interface SearchFormData {
     statistics_scope: StatisticsScope;
     github_token: string;
     language: string;
-    java_version: "" | "6" | "7" | "8" | "11" | "17" | "21";
+    java_version: "" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26";
     stars: string;
     forks: string;
     size: string;

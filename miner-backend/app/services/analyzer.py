@@ -86,14 +86,14 @@ JDK_MAP: dict[str, Path] = {
 }
 
 # Layout alternativo (imagem Docker com JDKs oficiais): uma pasta por versão em JDK_BASE_DIR
-# (ex.: /opt/jdks/17). Só as versões presentes existem; as demais usam allow_jdk_upgrade.
+# (ex.: /opt/jdks/17). Versões ausentes na pasta usam allow_jdk_upgrade.
 if os.environ.get("JDK_LAYOUT", "sdkman").lower() == "versions":
     JDK_MAP = {
         **{f"1.{n}": JDK_BASE_DIR / str(n) for n in (6, 7, 8)},
-        **{str(n): JDK_BASE_DIR / str(n) for n in (6, 7, 8, 11, 17, 21, 25)},
+        **{str(n): JDK_BASE_DIR / str(n) for n in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)},
     }
 
-VERSIONS_ASC  = ["6","7","8","11","14","15","16","17","18","19","20","21","22","23","25"]
+VERSIONS_ASC  = ["6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26"]
 MAVEN_MIN_VER = "8"   # Maven precisa de Java ≥ 8 para iniciar
 
 # class file major version → Java version
@@ -101,7 +101,7 @@ CLASS_VER_MAP: dict[int, str] = {
     50:"6", 51:"7", 52:"8", 53:"9", 54:"10",
     55:"11", 56:"12", 57:"13", 58:"14", 59:"15",
     60:"16", 61:"17", 62:"18", 63:"19", 64:"20",
-    65:"21", 66:"22", 67:"23", 68:"24", 69:"25",
+    65:"21", 66:"22", 67:"23", 68:"24", 69:"25", 70:"26",
 }
 
 # ---------------------------------------------------------------------------
