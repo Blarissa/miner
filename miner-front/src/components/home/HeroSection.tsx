@@ -16,7 +16,7 @@ export default function HeroSection({ onStart }: { onStart: () => void }) {
           id="hero-title"
           className="bg-gradient-to-r from-cyan-400 via-blue-500 to-orange-500 bg-clip-text pb-1 text-4xl font-bold leading-tight tracking-tight text-transparent lg:text-5xl"
         >
-          Descubra, compile e analise repositórios Java em escala
+          Descubra, compile e analise repositórios Java
         </h1>
 
         <p className="max-w-2xl text-base leading-relaxed text-slate-400">
