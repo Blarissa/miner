@@ -44,3 +44,9 @@ miner-backend/.tmp-tests/
 Thumbs.db
 *.swp
 *.swo
+
+# Medula (Fórmula Córtex · Cérebro · Medula)
+/medula/
+
+# Cérebro do projeto (memória local, não vai pro repositório)
+/Docs/Cerebro/
