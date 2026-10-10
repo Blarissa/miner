@@ -126,6 +126,22 @@ class PipelineControlsTest(unittest.TestCase):
         self.assertEqual(filters[0].stars, ">=100")
         self.assertEqual(filters[1].stars, ">=100")
 
+    def test_statistics_separates_not_analyzed_from_none_detected(self) -> None:
+        statistics = build_statistics(
+            [
+                {"repo_name": "a/simples"},
+                {"compiled": True, "has_tests": True, "tests_passed": True, "eliminated": False, "mock_libraries": ""},
+                {"compiled": False, "eliminated": True, "error_stage": "clone"},
+                {"compiled": True, "has_tests": True, "tests_passed": True, "eliminated": False, "mock_libraries": "Mockito"},
+            ],
+            "all",
+        )
+
+        self.assertEqual(
+            {item["value"]: item["count"] for item in statistics["mock_libraries"]},
+            {"Não analisado": 2, "Nenhuma detectada": 1, "Mockito": 1},
+        )
+
     def test_statistics_separates_declared_and_effective_java_versions(self) -> None:
         statistics = build_statistics(
             [
@@ -191,7 +207,7 @@ class PipelineControlsTest(unittest.TestCase):
             statistics["mock_libraries"],
             [
                 {"value": "Mockito", "count": 1, "percentage": 50.0},
-                {"value": "unknown", "count": 1, "percentage": 50.0},
+                {"value": "Nenhuma detectada", "count": 1, "percentage": 50.0},
             ],
         )
         self.assertEqual(
@@ -205,7 +221,7 @@ class PipelineControlsTest(unittest.TestCase):
             statistics["integration_test_tools"],
             [
                 {"value": "Testcontainers", "count": 1, "percentage": 50.0},
-                {"value": "unknown", "count": 1, "percentage": 50.0},
+                {"value": "Nenhuma detectada", "count": 1, "percentage": 50.0},
             ],
         )
         self.assertEqual(

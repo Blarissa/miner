@@ -68,6 +68,33 @@ def repo_text_field(repo: dict[str, Any], field: str, meta: dict[str, Any] | Non
     return str(repo.get(field) or meta.get(field) or "unknown")
 
 
+NOT_ANALYZED_LABEL = "Não analisado"
+NONE_DETECTED_LABEL = "Nenhuma detectada"
+# Etapas que eliminam o repositório antes da leitura do pom.xml (sem detecção de bibliotecas).
+ELIMINATED_BEFORE_DETECTION_STAGES = {"clone", "jdk_resolution", "structure"}
+
+
+def library_labels(
+    repo: dict[str, Any],
+    field: str,
+    meta: dict[str, Any],
+    analyzed: bool,
+) -> list[str]:
+    """Rótulos de bibliotecas/ferramentas de teste de um repositório.
+
+    Separa três situações que antes viravam todas "unknown":
+    - repositório sem análise (busca simples, ou eliminado antes de ler o pom.xml);
+    - analisado, mas nenhuma biblioteca foi detectada;
+    - bibliotecas detectadas.
+    """
+    detection_ran = analyzed and str(repo.get("error_stage") or "") not in ELIMINATED_BEFORE_DETECTION_STAGES
+    if not detection_ran:
+        return [NOT_ANALYZED_LABEL]
+    value = str(repo.get(field) or meta.get(field) or "")
+    labels = [item.strip() for item in value.split(",") if item.strip()]
+    return labels or [NONE_DETECTED_LABEL]
+
+
 def split_labels(value: str) -> list[str]:
     labels = [item.strip() for item in value.split(",") if item.strip()]
     return labels or ["unknown"]
@@ -248,13 +275,13 @@ def build_statistics(
         java_comparison_counter[
             java_version_comparison_label(declared_java_version, effective_java_version)
         ] += 1
-        for label in split_labels(repo_text_field(repo, "test_frameworks", meta)):
+        for label in library_labels(repo, "test_frameworks", meta, analyzed):
             test_frameworks_counter[label] += 1
-        for label in split_labels(repo_text_field(repo, "mock_libraries", meta)):
+        for label in library_labels(repo, "mock_libraries", meta, analyzed):
             mock_libraries_counter[label] += 1
-        for label in split_labels(repo_text_field(repo, "assertion_libraries", meta)):
+        for label in library_labels(repo, "assertion_libraries", meta, analyzed):
             assertion_libraries_counter[label] += 1
-        for label in split_labels(repo_text_field(repo, "integration_test_tools", meta)):
+        for label in library_labels(repo, "integration_test_tools", meta, analyzed):
             integration_test_tools_counter[label] += 1
         if compile_duration is not None:
             compile_duration_values.append(compile_duration)
