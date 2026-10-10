@@ -54,7 +54,7 @@ PERSIST_ELIMINATED_REPOSITORIES = (
 )
 
 # ---------------------------------------------------------------------------
-# Mapeamento completo de JDKs (sdkman)
+# Mapeamento de JDKs (pastas por versão na imagem Docker; SDKMAN como alternativa)
 # ---------------------------------------------------------------------------
 
 JDK_BASE_DIR = Path(
@@ -85,12 +85,28 @@ JDK_MAP: dict[str, Path] = {
     "25":  JDK_BASE_DIR / "25-open",
 }
 
-# Layout alternativo (imagem Docker com JDKs oficiais): uma pasta por versão em JDK_BASE_DIR
-# (ex.: /opt/jdks/17). Versões ausentes na pasta usam allow_jdk_upgrade.
-if os.environ.get("JDK_LAYOUT", "sdkman").lower() == "versions":
+# Layout por versão (imagem Docker, JDKs oficiais): uma pasta numérica por JDK em JDK_BASE_DIR
+# (ex.: /opt/jdks/17). É detectado sozinho quando JDK_BASE_DIR tem pastas assim; use
+# JDK_LAYOUT=sdkman ou JDK_LAYOUT=versions para forçar. Versões ausentes usam allow_jdk_upgrade.
+def _versioned_jdks(base: Path) -> dict[str, Path]:
+    try:
+        return {
+            entry.name: entry
+            for entry in base.iterdir()
+            if entry.is_dir() and entry.name.isdigit() and (entry / "bin").is_dir()
+        }
+    except OSError:
+        return {}
+
+
+_JDK_LAYOUT = os.environ.get("JDK_LAYOUT", "auto").lower()
+_VERSIONED_JDKS = _versioned_jdks(JDK_BASE_DIR)
+if _JDK_LAYOUT == "versions" or (_JDK_LAYOUT == "auto" and _VERSIONED_JDKS):
     JDK_MAP = {
         **{f"1.{n}": JDK_BASE_DIR / str(n) for n in (6, 7, 8)},
-        **{str(n): JDK_BASE_DIR / str(n) for n in (6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26)},
+        **{name: path for name, path in _VERSIONED_JDKS.items()},
+        # versões padrão mesmo se a pasta ainda não existir (o caminho é checado no uso)
+        **{str(n): JDK_BASE_DIR / str(n) for n in range(6, 27) if str(n) not in _VERSIONED_JDKS},
     }
 
 VERSIONS_ASC  = ["6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26"]
