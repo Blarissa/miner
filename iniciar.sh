@@ -3,7 +3,7 @@
 set -u
 cd "$(dirname "$0")"
 
-IMAGEM=ghcr.io/blarissa/miner:latest
+IMAGEM=blarissa/miner:latest
 CONTAINER=miner-backend-run
 PORTA=8000
 URL="http://localhost:${PORTA}"

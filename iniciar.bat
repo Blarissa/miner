@@ -3,7 +3,7 @@ rem Miner - inicia tudo com um clique (precisa so do Docker Desktop aberto).
 setlocal
 cd /d "%~dp0"
 
-set IMAGEM=ghcr.io/blarissa/miner:latest
+set IMAGEM=blarissa/miner:latest
 set CONTAINER=miner-backend-run
 set PORTA=8000
 set URL=http://localhost:%PORTA%
