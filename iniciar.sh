@@ -22,7 +22,13 @@ abrir() {
   if command -v xdg-open >/dev/null 2>&1; then xdg-open "${URL}" >/dev/null 2>&1 || true   # Linux
   elif [ "$(uname)" = "Darwin" ]; then open "${URL}"                                         # macOS
   fi
-  echo "Para encerrar, execute ./parar.sh"
+  echo
+  echo "O Miner está rodando. Deixe este terminal aberto enquanto estiver usando."
+  echo "Quando terminar, pressione qualquer tecla para encerrar o Miner."
+  echo "(Seus resultados ficam guardados.)"
+  read -r -n 1 -s || true
+  docker stop "${CONTAINER}" >/dev/null 2>&1 || true
+  echo "Miner encerrado."
 }
 
 if [ -n "$(docker ps -q --filter "name=^/${CONTAINER}$")" ]; then

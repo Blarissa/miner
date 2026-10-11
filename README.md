@@ -42,7 +42,7 @@ chmod +x iniciar.sh
 ./iniciar.sh
 ```
 
-Para encerrar: `./parar.sh` (baixe também o [`parar.sh`](https://github.com/Blarissa/miner/releases/latest/download/parar.sh)) ou `docker stop miner-backend-run`.
+Para encerrar, pressione qualquer tecla no terminal onde rodou o `./iniciar.sh`. Se fechar o terminal sem fazer isso, o Miner continua rodando; use `docker stop miner-backend-run` (ou o [`parar.sh`](https://github.com/Blarissa/miner/releases/latest/download/parar.sh)).
 
 Detalhes:
 
