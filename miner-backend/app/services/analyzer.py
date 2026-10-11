@@ -54,27 +54,23 @@ PERSIST_ELIMINATED_REPOSITORIES = (
 )
 
 # ---------------------------------------------------------------------------
-# Descoberta dos JDKs instalados (nada fixo na máquina de quem escreveu o código)
+# Descoberta dos JDKs instalados na imagem Docker (/opt/jdks/<versão>)
 # ---------------------------------------------------------------------------
 
+DEFAULT_JDK_BASE_DIR = Path("/opt/jdks")
+
+
 def _default_jdk_base_dir() -> Path:
-    """Onde procurar JDKs, nesta ordem:
-    1. JDK_BASE_DIR (ou SDKMAN_JAVA_DIR, nome antigo);
-    2. /opt/jdks (imagem Docker: uma pasta por versão, ex.: /opt/jdks/17);
-    3. $SDKMAN_DIR/candidates/java;
-    4. ~/.sdkman/candidates/java (instalação padrão do SDKMAN).
+    """Os JDKs vêm sempre da imagem Docker, uma pasta por versão (/opt/jdks/17).
+
+    JDK_BASE_DIR (ou SDKMAN_JAVA_DIR, nome antigo) só existe para testes e
+    desenvolvimento fora do Docker; quem usa o programa não configura nada.
     """
     for name in ("JDK_BASE_DIR", "SDKMAN_JAVA_DIR"):
         value = os.environ.get(name)
         if value:
             return Path(value).expanduser()
-    docker_dir = Path("/opt/jdks")
-    if docker_dir.is_dir():
-        return docker_dir
-    sdkman_dir = os.environ.get("SDKMAN_DIR")
-    if sdkman_dir:
-        return Path(sdkman_dir).expanduser() / "candidates" / "java"
-    return Path.home() / ".sdkman" / "candidates" / "java"
+    return DEFAULT_JDK_BASE_DIR
 
 
 def _jdk_major_version(folder_name: str) -> str | None:
@@ -114,6 +110,10 @@ JDK_MAP: dict[str, Path] = {
 for _legacy in ("6", "7", "8"):
     if _legacy in JDK_MAP:
         JDK_MAP[f"1.{_legacy}"] = JDK_MAP[_legacy]
+
+JDK_HINT = f"Nenhum JDK encontrado em {JDK_BASE_DIR}. Execute o backend pelo Docker, que já traz os JDKs."
+if not JDK_MAP:
+    logging.getLogger("analyzer").warning(JDK_HINT)
 
 VERSIONS_ASC  = ["6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26"]
 MAVEN_MIN_VER = "8"   # Maven precisa de Java ≥ 8 para iniciar
@@ -941,7 +941,8 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
     jdk_path, effective_ver = resolve_jdk(java_version, allow_jdk_upgrade)
     if not jdk_path:
         result.mark_eliminated("jdk_resolution",
-                               f"Nenhum JDK disponível para versão '{java_version}'")
+                               f"Nenhum JDK disponível para versão '{java_version}'"
+                               + ("" if JDK_MAP else f". {JDK_HINT}"))
         return result
 
     result.effective_java_version = effective_ver
