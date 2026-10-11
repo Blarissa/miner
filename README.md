@@ -15,12 +15,43 @@ Durante a análise, o backend pode clonar os projetos, identificar a versão Jav
 - Filtros por versão Java, arquivo, extensão, organização, usuário, licença, estrelas, forks, datas e outros qualificadores.
 - Detecção de projetos Maven/Spring.
 - Análise opcional de compilação e testes.
-- Suporte a múltiplas versões de JDK no backend via Docker.
+- Suporte a JDKs 6 a 26 prontos na imagem Docker (o JDK é escolhido pela versão declarada no projeto).
 - Execuções assíncronas identificadas por Run ID.
 - Cancelamento e retomada de execuções.
 - Persistência em SQLite.
 - Estatísticas por execução, incluindo funil de análise, versões Java, testes, tempos e estágios de eliminação.
 - Interface web para iniciar buscas, acompanhar progresso e consultar resultados antigos.
+- Página de estatísticas com gráficos (funil, resultado por versão do Java, bibliotecas de teste).
+
+## Início Rápido (Docker, sem clonar o projeto)
+
+Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) instalado e **aberto**. Não é preciso instalar Java, Maven, Python nem Node.
+
+**Windows**
+
+1. Baixe o [`iniciar.bat`](https://raw.githubusercontent.com/Blarissa/miner/main/iniciar.bat) (botão direito, "Salvar link como").
+2. Dê dois cliques nele.
+3. Na primeira vez ele baixa a imagem do Miner (alguns GB, leva alguns minutos). Depois o navegador abre em <http://localhost:8000>.
+4. Quando terminar de usar, volte à janela preta e pressione qualquer tecla para encerrar o Miner.
+
+**Linux / macOS**
+
+```bash
+curl -O https://raw.githubusercontent.com/Blarissa/miner/main/iniciar.sh
+chmod +x iniciar.sh
+./iniciar.sh
+```
+
+Para encerrar: `./parar.sh` (baixe também o [`parar.sh`](https://raw.githubusercontent.com/Blarissa/miner/main/parar.sh)) ou `docker stop miner-backend-run`.
+
+Detalhes:
+
+- Os resultados ficam guardados no volume Docker `miner-data` e continuam depois de encerrar.
+- A imagem é publicada automaticamente em `ghcr.io/blarissa/miner:latest`. Cada vez que o script abre, ele verifica se há versão nova.
+- Se você clonou o repositório e estiver sem internet, o script constrói a imagem a partir dos arquivos locais (leva uns 20 minutos).
+- Se fechar a janela sem apertar uma tecla, o Miner continua rodando; use o `parar.bat`.
+- Você precisa de um token do GitHub (campo no formulário) para buscas por código.
+- A API tem documentação em <http://localhost:8000/api/docs> e a documentação do projeto em <http://localhost:8000/docs>.
 
 ## Estrutura Do Repositório
 
@@ -35,6 +66,9 @@ miner/
     src/
     package.json
     README.md
+  .github/workflows/     # publica a imagem Docker
+  iniciar.bat / iniciar.sh   # sobe o Miner com um clique
+  parar.bat / parar.sh       # encerra o Miner
   README.md
 ```
 
@@ -42,171 +76,80 @@ miner/
 
 Backend:
 
-- Python 3.13.
-- FastAPI.
-- Uvicorn.
-- SQLite.
-- Git, Maven e JDK para análise dos repositórios.
-- Docker para execução empacotada com múltiplas versões de Java.
+- Python 3.13, FastAPI, Uvicorn e SQLite.
+- Git, Maven 3.9 e JDKs 6 a 26 (na imagem Docker: eclipse-temurin e azul/zulu em `/opt/jdks`).
 
 Frontend:
 
-- React.
-- TypeScript.
-- Vite.
-- Tailwind CSS.
-- Lucide React.
+- React, TypeScript, Vite, Tailwind CSS e Lucide React.
 
-## Requisitos Gerais
+Na imagem Docker o front já vem compilado e é servido pelo próprio backend, na mesma porta (8000). Por isso o Docker não precisa de configuração.
 
-Para executar localmente sem Docker:
+Observação: o Maven 3.9 exige Java 8 ou superior, então repositórios que declaram Java 6 ou 7 só são analisados com a opção de permitir atualização do JDK.
 
-- Python 3.13.
-- Node.js e npm.
-- Git.
-- Maven.
-- JDK instalado.
-- Banco SQLite em arquivo local.
+## Executando Sem Docker (desenvolvimento)
 
-Para executar o backend com Docker:
+Requisitos: Python 3.13, Node.js e npm, Git, Maven e um ou mais JDKs.
 
-- Docker instalado.
-- Node.js e npm para executar o front localmente.
+O analisador descobre os JDKs sozinho: usa `JDK_BASE_DIR` (se definido), `/opt/jdks`, o SDKMAN ou os JDKs da máquina. Nenhum caminho pessoal é necessário.
 
-## Configuração Do Banco No Windows
-
-A opção mais simples é usar uma pasta fixa para o SQLite:
-
-```powershell
-New-Item -ItemType Directory -Path C:\sqlite -Force
-New-Item -ItemType File -Path C:\sqlite\minerador.db -Force
-```
-
-No arquivo `miner-backend/.env`, configure:
+O banco SQLite é criado automaticamente em `~/.miner/minerador.db`. Para usar outro arquivo, defina `DATABASE_URL` no `miner-backend/.env`, por exemplo:
 
 ```env
-CORS_ORIGINS=["http://localhost:5173"]
-DATABASE_URL="jdbc:sqlite:C:\sqlite\minerador.db"
+DATABASE_URL="sqlite:///C:/sqlite/minerador.db"
 ```
 
-O SQLite não precisa de servidor separado. O arquivo pode ser criado manualmente, mas as tabelas são criadas automaticamente pelo backend ao iniciar.
-
-## Executando O Backend Localmente
-
-Entre na pasta do backend:
+### Backend
 
 ```powershell
 cd miner-backend
-```
-
-Crie e ative o ambiente virtual:
-
-```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Instale as dependências:
-
-```powershell
 pip install -r requirements.txt
-```
-
-Suba a API:
-
-```powershell
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Acesse:
-
 - API: <http://127.0.0.1:8000>
-- Swagger: <http://127.0.0.1:8000/docs>
+- Swagger: <http://127.0.0.1:8000/api/docs>
 - Health check: <http://127.0.0.1:8000/health>
 
-## Executando O Backend Com Docker
-
-Entre na pasta do backend:
-
-```powershell
-cd miner-backend
-```
-
-Crie um arquivo `.env.docker`:
-
-```env
-CORS_ORIGINS=["http://localhost:5173"]
-DATABASE_URL=sqlite:////app/data/minerador.db
-```
-
-Crie a pasta de dados:
-
-```powershell
-New-Item -ItemType Directory -Path .\data -Force
-```
-
-Construa a imagem:
-
-```powershell
-docker build -t miner-backend .
-```
-
-Execute o container:
-
-```powershell
-docker run --rm --env-file .env.docker -p 8000:10000 -v ${PWD}\data:/app/data miner-backend
-```
-
-O backend ficará disponível em:
-
-```text
-http://localhost:8000
-```
-
-## Executando O Frontend
-
-Em outro terminal, entre na pasta do front:
+### Frontend (modo desenvolvimento)
 
 ```powershell
 cd miner-front
+npm install
+npm run dev
 ```
 
-Crie ou confira o arquivo `miner-front/.env`:
+Confira o `miner-front/.env`:
 
 ```env
 VITE_API_URL=http://localhost:8000
 ```
 
-Instale as dependências:
+Acesse <http://localhost:5173>. Para o backend aceitar essa origem, deixe `CORS_ORIGINS=["http://localhost:5173"]` no `miner-backend/.env`.
+
+## Construindo A Imagem Docker Manualmente
+
+Execute na **raiz** do projeto (o contexto inclui o front):
 
 ```powershell
-npm install
+docker build -f miner-backend/Dockerfile -t miner-backend .
+docker run -d --rm --name miner-backend-run -p 8000:10000 -v miner-data:/app/data miner-backend
 ```
 
-Suba o servidor de desenvolvimento:
-
-```powershell
-npm run dev
-```
-
-Acesse:
-
-```text
-http://localhost:5173
-```
+O primeiro build leva cerca de 20 minutos por causa dos 21 JDKs. Abra <http://localhost:8000>.
 
 ## Fluxo De Uso
 
-1. Suba o backend em `http://localhost:8000`.
-2. Suba o front em `http://localhost:5173`.
-3. Abra a interface no navegador.
-4. Clique em `Nova busca`.
-5. Informe uma ou mais queries do GitHub.
-6. Informe o token do GitHub no formulário quando a busca exigir autenticação.
-7. Configure filtros e opções de análise.
-8. Inicie a mineração.
-9. Acompanhe o progresso, os resultados parciais e as estatísticas.
-10. Use o Run ID para carregar a execução novamente depois.
+1. Suba o Miner (`iniciar.bat`) e abra <http://localhost:8000>.
+2. Clique em `Nova busca`.
+3. Informe uma ou mais queries do GitHub.
+4. Informe o token do GitHub no formulário quando a busca exigir autenticação.
+5. Configure filtros e opções de análise.
+6. Inicie a mineração.
+7. Acompanhe o progresso, os resultados parciais e as estatísticas.
+8. Use o Run ID para carregar a execução novamente depois.
 
 ## Documentação Específica
 
@@ -215,28 +158,13 @@ Cada módulo possui um README próprio com detalhes de configuração e execuç�
 - Backend: [`miner-backend/README.md`](miner-backend/README.md)
 - Frontend: [`miner-front/README.md`](miner-front/README.md)
 
-## Build Do Frontend
-
-Para gerar a versão de produção:
-
-```powershell
-cd miner-front
-npm run build
-```
-
-Para testar o build:
-
-```powershell
-npm run preview
-```
-
 ## Validação Rápida
 
-Backend:
+Backend (testes):
 
 ```powershell
 cd miner-backend
-.\.venv\Scripts\python.exe -m compileall app
+python -m unittest
 ```
 
 Frontend:
@@ -244,4 +172,5 @@ Frontend:
 ```powershell
 cd miner-front
 npm run build
+npm run lint
 ```
