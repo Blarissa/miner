@@ -42,14 +42,14 @@ chmod +x iniciar.sh
 ./iniciar.sh
 ```
 
-Para encerrar, pressione qualquer tecla no terminal onde rodou o `./iniciar.sh`. Se fechar o terminal sem fazer isso, o Miner continua rodando; use `docker stop miner-backend-run` (ou o [`parar.sh`](https://github.com/Blarissa/miner/releases/latest/download/parar.sh)).
+Para encerrar, pressione qualquer tecla no terminal onde rodou o `./iniciar.sh`. Se fechar o terminal sem fazer isso, o Miner continua rodando; use `docker stop miner-backend-run`.
 
 Detalhes:
 
 - Os resultados ficam guardados no volume Docker `miner-data` e continuam depois de encerrar.
 - A imagem fica publicada no Docker Hub: [`blarissa/miner`](https://hub.docker.com/r/blarissa/miner). Você não precisa de conta nem de login para baixá-la. Cada vez que o script abre, ele verifica se há versão nova.
 - Se você clonou o repositório e estiver sem internet, o script constrói a imagem a partir dos arquivos locais (leva uns 20 minutos).
-- Se fechar a janela sem apertar uma tecla, o Miner continua rodando; use o `parar.bat`.
+- Se fechar a janela sem apertar uma tecla, o Miner continua rodando; encerre com `docker stop miner-backend-run` (ou com o `parar.bat`, se você clonou o repositório).
 - Você precisa de um token do GitHub (campo no formulário) para buscas por código.
 - A API tem documentação em <http://localhost:8000/api/docs> e a documentação do projeto em <http://localhost:8000/docs>.
 
