@@ -94,7 +94,6 @@ SHELL ["/bin/bash", "-o", "pipefail", "-lc"]
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     JDK_BASE_DIR=/opt/jdks \
-    JDK_LAYOUT=versions \
     JAVA_HOME=/opt/jdks/17 \
     DATABASE_URL=sqlite:////app/data/minerador.db
 

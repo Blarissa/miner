@@ -54,60 +54,66 @@ PERSIST_ELIMINATED_REPOSITORIES = (
 )
 
 # ---------------------------------------------------------------------------
-# Mapeamento de JDKs (pastas por versão na imagem Docker; SDKMAN como alternativa)
+# Descoberta dos JDKs instalados (nada fixo na máquina de quem escreveu o código)
 # ---------------------------------------------------------------------------
 
-JDK_BASE_DIR = Path(
-    os.environ.get(
-        "JDK_BASE_DIR",
-        os.environ.get("SDKMAN_JAVA_DIR", "/home/laris/.sdkman/candidates/java"),
-    )
-)
+def _default_jdk_base_dir() -> Path:
+    """Onde procurar JDKs, nesta ordem:
+    1. JDK_BASE_DIR (ou SDKMAN_JAVA_DIR, nome antigo);
+    2. /opt/jdks (imagem Docker: uma pasta por versão, ex.: /opt/jdks/17);
+    3. $SDKMAN_DIR/candidates/java;
+    4. ~/.sdkman/candidates/java (instalação padrão do SDKMAN).
+    """
+    for name in ("JDK_BASE_DIR", "SDKMAN_JAVA_DIR"):
+        value = os.environ.get(name)
+        if value:
+            return Path(value).expanduser()
+    docker_dir = Path("/opt/jdks")
+    if docker_dir.is_dir():
+        return docker_dir
+    sdkman_dir = os.environ.get("SDKMAN_DIR")
+    if sdkman_dir:
+        return Path(sdkman_dir).expanduser() / "candidates" / "java"
+    return Path.home() / ".sdkman" / "candidates" / "java"
 
-JDK_MAP: dict[str, Path] = {
-    "1.6": JDK_BASE_DIR / "6.0.119-zulu",
-    "1.7": JDK_BASE_DIR / "7.0.352-zulu",
-    "1.8": JDK_BASE_DIR / "8.0.402-zulu",
-    "6":   JDK_BASE_DIR / "6.0.119-zulu",
-    "7":   JDK_BASE_DIR / "7.0.352-zulu",
-    "8":   JDK_BASE_DIR / "8.0.402-zulu",
-    "11":  JDK_BASE_DIR / "11.0.22-tem",
-    "14":  JDK_BASE_DIR / "14.0.2-open",
-    "15":  JDK_BASE_DIR / "15.0.2-open",
-    "16":  JDK_BASE_DIR / "16.0.2-open",
-    "17":  JDK_BASE_DIR / "17.0.10-tem",
-    "18":  JDK_BASE_DIR / "18.0.2-open",
-    "19":  JDK_BASE_DIR / "19.0.2-open",
-    "20":  JDK_BASE_DIR / "20.0.2-open",
-    "21":  JDK_BASE_DIR / "21.0.2-tem",
-    "22":  JDK_BASE_DIR / "22.0.2-zulu",
-    "23":  JDK_BASE_DIR / "23.0.2-zulu",
-    "25":  JDK_BASE_DIR / "25-open",
-}
 
-# Layout por versão (imagem Docker, JDKs oficiais): uma pasta numérica por JDK em JDK_BASE_DIR
-# (ex.: /opt/jdks/17). É detectado sozinho quando JDK_BASE_DIR tem pastas assim; use
-# JDK_LAYOUT=sdkman ou JDK_LAYOUT=versions para forçar. Versões ausentes usam allow_jdk_upgrade.
-def _versioned_jdks(base: Path) -> dict[str, Path]:
+def _jdk_major_version(folder_name: str) -> str | None:
+    """'17' -> '17' | '17.0.10-tem' -> '17' | '8.0.402-zulu' -> '8' | '1.8.0_202' -> '8'."""
+    match = re.match(r"^1\.(\d+)", folder_name) or re.match(r"^(\d+)", folder_name)
+    return match.group(1) if match else None
+
+
+def discover_jdks(base: Path) -> dict[str, Path]:
+    """Mapeia versão principal -> pasta do JDK, lendo o que existe em `base`.
+
+    Funciona com pastas por versão (17), com nomes do SDKMAN (17.0.10-tem) e com
+    qualquer mistura; se houver mais de uma pasta da mesma versão, vale a mais nova.
+    Ignora o atalho `current` e pastas sem `bin/`.
+    """
+    found: dict[str, tuple[tuple[int, ...], Path]] = {}
     try:
-        return {
-            entry.name: entry
-            for entry in base.iterdir()
-            if entry.is_dir() and entry.name.isdigit() and (entry / "bin").is_dir()
-        }
+        entries = list(base.iterdir())
     except OSError:
         return {}
+    for entry in entries:
+        if not entry.is_dir() or not (entry / "bin").is_dir():
+            continue
+        major = _jdk_major_version(entry.name)
+        if major is None:
+            continue
+        order = tuple(int(part) for part in re.findall(r"\d+", entry.name))
+        if major not in found or order > found[major][0]:
+            found[major] = (order, entry)
+    return {major: path for major, (_, path) in found.items()}
 
 
-_JDK_LAYOUT = os.environ.get("JDK_LAYOUT", "auto").lower()
-_VERSIONED_JDKS = _versioned_jdks(JDK_BASE_DIR)
-if _JDK_LAYOUT == "versions" or (_JDK_LAYOUT == "auto" and _VERSIONED_JDKS):
-    JDK_MAP = {
-        **{f"1.{n}": JDK_BASE_DIR / str(n) for n in (6, 7, 8)},
-        **{name: path for name, path in _VERSIONED_JDKS.items()},
-        # versões padrão mesmo se a pasta ainda não existir (o caminho é checado no uso)
-        **{str(n): JDK_BASE_DIR / str(n) for n in range(6, 27) if str(n) not in _VERSIONED_JDKS},
-    }
+JDK_BASE_DIR = _default_jdk_base_dir()
+JDK_MAP: dict[str, Path] = {
+    **{major: path for major, path in discover_jdks(JDK_BASE_DIR).items()},
+}
+for _legacy in ("6", "7", "8"):
+    if _legacy in JDK_MAP:
+        JDK_MAP[f"1.{_legacy}"] = JDK_MAP[_legacy]
 
 VERSIONS_ASC  = ["6","7","8","9","10","11","12","13","14","15","16","17","18","19","20","21","22","23","24","25","26"]
 MAVEN_MIN_VER = "8"   # Maven precisa de Java ≥ 8 para iniciar
@@ -382,7 +388,7 @@ def resolve_jdk(declared: str, allow_jdk_upgrade: bool = False) -> tuple[Path | 
 def build_env(jdk_path: Path) -> dict[str, str]:
     env = os.environ.copy()
     env["JAVA_HOME"] = str(jdk_path)
-    env["PATH"]      = str(jdk_path / "bin") + ":" + env.get("PATH", "")
+    env["PATH"]      = str(jdk_path / "bin") + os.pathsep + env.get("PATH", "")
     return env
 
 # ---------------------------------------------------------------------------
