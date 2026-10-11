@@ -29,7 +29,7 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) ins
 
 **Windows**
 
-1. Baixe o [`iniciar.bat`](https://raw.githubusercontent.com/Blarissa/miner/main/iniciar.bat) (botão direito, "Salvar link como").
+1. Baixe o [`iniciar.bat`](https://raw.githubusercontent.com/Blarissa/miner/main/iniciar.bat) (botão direito, "Salvar link como"; confira se o arquivo ficou com o nome `iniciar.bat`, e não `.txt`).
 2. Dê dois cliques nele.
 3. Na primeira vez ele baixa a imagem do Miner (alguns GB, leva alguns minutos). Depois o navegador abre em <http://localhost:8000>.
 4. Quando terminar de usar, volte à janela preta e pressione qualquer tecla para encerrar o Miner.
@@ -47,7 +47,7 @@ Para encerrar: `./parar.sh` (baixe também o [`parar.sh`](https://raw.githubuser
 Detalhes:
 
 - Os resultados ficam guardados no volume Docker `miner-data` e continuam depois de encerrar.
-- A imagem é publicada automaticamente em `ghcr.io/blarissa/miner:latest`. Cada vez que o script abre, ele verifica se há versão nova.
+- A imagem fica publicada no Docker Hub: [`blarissa/miner`](https://hub.docker.com/r/blarissa/miner). Você não precisa de conta nem de login para baixá-la. Cada vez que o script abre, ele verifica se há versão nova.
 - Se você clonou o repositório e estiver sem internet, o script constrói a imagem a partir dos arquivos locais (leva uns 20 minutos).
 - Se fechar a janela sem apertar uma tecla, o Miner continua rodando; use o `parar.bat`.
 - Você precisa de um token do GitHub (campo no formulário) para buscas por código.
@@ -136,6 +136,14 @@ Execute na **raiz** do projeto (o contexto inclui o front):
 ```powershell
 docker build -f miner-backend/Dockerfile -t miner-backend .
 docker run -d --rm --name miner-backend-run -p 8000:10000 -v miner-data:/app/data miner-backend
+```
+
+Para publicar a imagem no Docker Hub (mantenedora):
+
+```powershell
+docker login
+docker build -f miner-backend/Dockerfile -t blarissa/miner:latest .
+docker push blarissa/miner:latest
 ```
 
 O primeiro build leva cerca de 20 minutos por causa dos 21 JDKs. Abra <http://localhost:8000>.
