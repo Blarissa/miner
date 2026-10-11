@@ -87,6 +87,15 @@ FROM eclipse-temurin:26-jdk-jammy AS jdk26
 RUN JH="$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")")" \
     && mkdir -p /jdk && cp -a "$JH"/. /jdk/
 
+# Front (React/Vite) compilado aqui e servido pelo backend em /; o contexto do build é a
+# raiz do projeto: docker build -f miner-backend/Dockerfile -t miner-backend .
+FROM node:22-slim AS front-build
+WORKDIR /front
+COPY miner-front/package.json miner-front/package-lock.json ./
+RUN npm ci
+COPY miner-front/ ./
+RUN npm run build
+
 FROM python:3.13-slim
 
 SHELL ["/bin/bash", "-o", "pipefail", "-lc"]
@@ -127,10 +136,11 @@ COPY --from=jdk24 /jdk /opt/jdks/24
 COPY --from=jdk25 /jdk /opt/jdks/25
 COPY --from=jdk26 /jdk /opt/jdks/26
 
-COPY requirements.txt .
+COPY miner-backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY miner-backend/ .
+COPY --from=front-build /front/dist /app/static
 
 RUN mkdir -p /app/data app/services/repos app/services/logs \
     && useradd --create-home --shell /bin/bash appuser \

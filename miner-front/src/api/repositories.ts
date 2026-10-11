@@ -7,7 +7,8 @@ import type {
     SearchFormData,
 } from "../models/types";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+// Desenvolvimento (Vite): backend em localhost:8000. Build de produção (imagem Docker): mesmo endereço, sem prefixo.
+const API_URL = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? "http://localhost:8000" : "");
 const POLL_INTERVAL_MS = 5000;
 const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"];
 
