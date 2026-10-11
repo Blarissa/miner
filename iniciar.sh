@@ -3,7 +3,7 @@
 set -u
 cd "$(dirname "$0")"
 
-IMAGEM=miner-backend
+IMAGEM=ghcr.io/blarissa/miner:latest
 CONTAINER=miner-backend-run
 PORTA=8000
 URL="http://localhost:${PORTA}"
@@ -30,9 +30,14 @@ if [ -n "$(docker ps -q --filter "name=^/${CONTAINER}$")" ]; then
   exit 0
 fi
 
-if ! docker image inspect "${IMAGEM}" >/dev/null 2>&1; then
-  echo "Preparando o Miner pela primeira vez. Isso pode levar vários minutos..."
-  docker build -f miner-backend/Dockerfile -t "${IMAGEM}" . || { echo "Não foi possível preparar o Miner." >&2; exit 1; }
+echo "Verificando a versão do Miner..."
+if ! docker pull "${IMAGEM}" && ! docker image inspect "${IMAGEM}" >/dev/null 2>&1; then
+  if [ -f miner-backend/Dockerfile ]; then
+    echo "Não foi possível baixar o Miner. Preparando a partir dos arquivos locais, pode levar vários minutos..."
+    docker build -f miner-backend/Dockerfile -t "${IMAGEM}" . || { echo "Não foi possível preparar o Miner." >&2; exit 1; }
+  else
+    echo "Não foi possível baixar o Miner. Verifique a internet e tente de novo." >&2; exit 1
+  fi
 fi
 
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
