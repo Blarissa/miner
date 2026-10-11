@@ -29,7 +29,7 @@ Requisito: [Docker Desktop](https://www.docker.com/products/docker-desktop/) ins
 
 **Windows**
 
-1. Baixe o [`iniciar.bat`](https://github.com/Blarissa/miner/releases/latest/download/iniciar.bat) (botão direito, "Salvar link como"; confira se o arquivo ficou com o nome `iniciar.bat`, e não `.txt`).
+1. Clique no link e baixe o [`iniciar.bat`](https://github.com/Blarissa/miner/releases/latest/download/iniciar.bat) (confira se o arquivo ficou com o nome `iniciar.bat`, e não `.txt`).
 2. Dê dois cliques nele.
 3. Na primeira vez ele baixa a imagem do Miner (alguns GB, leva alguns minutos). Depois o navegador abre em <http://localhost:8000>.
 4. Quando terminar de usar, volte à janela preta e pressione qualquer tecla para encerrar o Miner.
