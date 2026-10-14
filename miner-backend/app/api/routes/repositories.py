@@ -195,6 +195,20 @@ def get_repository_run_statistics(run_id: int) -> dict[str, Any]:
     if run is None:
         raise HTTPException(status_code=404, detail="Run nao encontrado.")
     statistics = get_run_statistics(run_id)
+    if (
+        run.get("status") == "cancelled"
+        and payload_bool(run.get("include_statistics"), True)
+        and (run.get("statistics_scope") or "accepted") == "accepted"
+    ):
+        # Cancelar marca a run como cancelada na hora, mas as estatisticas finais so
+        # sao gravadas quando o worker termina. Enquanto isso, a versao salva pode estar
+        # atrasada em relacao aos repositorios ja persistidos; recalcula (sem gravar,
+        # para a versao final do worker prevalecer) quando os totais divergem.
+        repositories = get_run_repositories(run_id)
+        if repositories:
+            fresh = build_statistics(repositories, "accepted")
+            if statistics is None or fresh.get("total") != statistics.get("total"):
+                statistics = fresh
     if statistics is None and payload_bool(run.get("include_statistics"), True):
         repositories = get_run_repositories(run_id)
         if repositories:

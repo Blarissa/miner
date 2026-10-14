@@ -219,6 +219,21 @@ export default function MiningDashboard({
         if (liveStats !== undefined) setStatistics(liveStats ?? null);
     }, [setStatistics]);
 
+    // As estatísticas da execução são gravadas no fim de cada passada e podem estar
+    // atrasadas em relação à lista (ex.: execução cancelada). Ao abrir a tela,
+    // busca a versão mais recente para os números baterem com a lista.
+    const handleOpenStatistics = async () => {
+        if (lastRunId !== null) {
+            try {
+                const fresh = await getRunStatistics(lastRunId);
+                if (fresh) setStatistics(fresh);
+            } catch (error: unknown) {
+                console.error("Falha ao atualizar estatísticas:", error);
+            }
+        }
+        onOpenStatistics(lastRunId);
+    };
+
     const [showValidation, setShowValidation] = useState<boolean>(false);
 
     const formErrors = useMemo(() => {
@@ -1242,7 +1257,7 @@ export default function MiningDashboard({
                             <Button
                                 type="button"
                                 variant="secondary"
-                                onClick={() => onOpenStatistics(lastRunId)}
+                                onClick={handleOpenStatistics}
                                 disabled={!statistics}
                                 title={!statistics ? "Nenhuma estatística carregada ainda" : undefined}
                             >
