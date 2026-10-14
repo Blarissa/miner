@@ -42,61 +42,15 @@ import { Button, Card, Checkbox, FieldError, FieldLabel, Modal, Select, TextInpu
 import { progressStageLabel, runStatusLabel } from "../models/runLabels";
 
 interface MiningDashboardProps {
+    /** Estado do formulário mantido pelo App, para sobreviver à troca de tela. */
+    formData: SearchFormData;
+    setFormData: React.Dispatch<React.SetStateAction<SearchFormData>>;
     initialRunId?: number | null;
     loadRequestKey?: number;
     onStatisticsChange: (statistics: RepositoryStatistics | null) => void;
     onEliminatedRepositoryStatsVisibilityChange: (visible: boolean) => void;
-    onOpenStatistics: () => void;
+    onOpenStatistics: (runId: number | null) => void;
 }
-
-const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
-    queries: ["mockito"],
-    search_type: "code",
-    // file_path: "",  // valor anterior (commit bc4db50)
-    file_path: "pom.xml",
-    max_repos: 20,
-    max_workers: 4,
-    analyzer_workers: 4,
-    delay: 0,
-    analyze: false,
-    require_buildable: false,
-    require_tests_passed: false,
-    allow_jdk_upgrade: false,
-    persist_eliminated_repositories: false,
-    include_statistics: true,
-    statistics_scope: "accepted",
-    github_token: "",
-    language: "Java",
-    java_version: "",
-    stars: "",
-    forks: "",
-    size: "",
-    created: "",
-    pushed: "",
-    topic: "",
-    license: "",
-    visibility: "public",
-    user: "",
-    org: "",
-    repo: "",
-    followers: "",
-    topics: "",
-    fork: "false",
-    archived: "false",
-    mirror: "",
-    template: "",
-    good_first_issues: "",
-    help_wanted_issues: "",
-    // filename: "",   // valor anterior (commit bc4db50)
-    // extension: "",  // valor anterior (commit bc4db50)
-    filename: "pom.xml",
-    extension: "xml",
-    path: "",
-    sort: "",
-    order: "",
-    per_page: 100,
-    search_in: [],
-};
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Erro inesperado";
@@ -205,14 +159,14 @@ function calculateMetrics(repositories: AnalyzedRepo[]) {
 }
 
 export default function MiningDashboard({
+    formData,
+    setFormData,
     initialRunId = null,
     loadRequestKey = 0,
     onStatisticsChange,
     onEliminatedRepositoryStatsVisibilityChange,
     onOpenStatistics,
 }: MiningDashboardProps) {
-    const [formData, setFormData] = useState<SearchFormData>(INITIAL_SEARCH_FORM_DATA);
-
     const [loading, setLoading] = useState<boolean>(false);
     const [repositories, setRepositories] = useState<AnalyzedRepo[]>([]);
     const [lastRunId, setLastRunId] = useState<number | null>(null);
@@ -1288,7 +1242,7 @@ export default function MiningDashboard({
                             <Button
                                 type="button"
                                 variant="secondary"
-                                onClick={onOpenStatistics}
+                                onClick={() => onOpenStatistics(lastRunId)}
                                 disabled={!statistics}
                                 title={!statistics ? "Nenhuma estatística carregada ainda" : undefined}
                             >

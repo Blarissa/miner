@@ -1,4 +1,5 @@
 import {
+    ArrowLeft,
     BarChart3,
     CheckCircle2,
     Code2,
@@ -14,6 +15,8 @@ import type { CountPercentageStat, DurationStat, OutcomeStat, RateStat, Reposito
 interface StatisticsPageProps {
     statistics: RepositoryStatistics | null;
     showEliminatedRepositoryStats: boolean;
+    /** Destino do botão "Voltar para mineração". */
+    miningPath?: string;
 }
 
 function scopeLabel(scope: RepositoryStatistics["scope"]) {
@@ -259,6 +262,7 @@ function Panel({
 export default function StatisticsPage({
     statistics,
     showEliminatedRepositoryStats,
+    miningPath = "/dashboard",
 }: StatisticsPageProps) {
     if (!statistics) {
         return (
@@ -272,7 +276,7 @@ export default function StatisticsPage({
                         </p>
                         <div className="mt-5 flex flex-wrap justify-center gap-3">
                             <Link
-                                to="/dashboard"
+                                to={miningPath}
                                 className="inline-flex items-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-orange-400 focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-300"
                             >
                                 Ir para Mineração
@@ -318,6 +322,13 @@ export default function StatisticsPage({
     return (
         <div className="min-h-screen bg-slate-950 text-slate-200 p-6 sm:p-10 font-sans">
             <div className="max-w-7xl mx-auto space-y-7">
+                <Link
+                    to={miningPath}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    Voltar para mineração
+                </Link>
                 <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-5">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight text-slate-50 flex items-center gap-2.5">

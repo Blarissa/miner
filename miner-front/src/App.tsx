@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import type { ReactNode } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { BookOpen, Code2, History } from 'lucide-react'
 import MiningDashboard from './components/MiningDashboard'
 import StatisticsPage from './components/StatisticsPage'
 import DocumentationPage from './components/DocumentationPage'
 import HomePage from './components/home/HomePage'
-import type { RepositoryStatistics } from './models/types'
+import type { RepositoryStatistics, SearchFormData } from './models/types'
+import { INITIAL_SEARCH_FORM_DATA } from './models/searchForm'
 
 function parseValidRunId(value: string): number | null {
   const parsedRunId = Number(value)
@@ -55,19 +56,25 @@ function TopNavLink({
 
 /** Wraps MiningDashboard for the /runs/:runId deep-link route: parses the run id from the URL. */
 function RunDashboardRoute({
+  formData,
+  setFormData,
   onStatisticsChange,
   onEliminatedRepositoryStatsVisibilityChange,
   onOpenStatistics,
 }: {
+  formData: SearchFormData
+  setFormData: Dispatch<SetStateAction<SearchFormData>>
   onStatisticsChange: (statistics: RepositoryStatistics | null) => void
   onEliminatedRepositoryStatsVisibilityChange: (visible: boolean) => void
-  onOpenStatistics: () => void
+  onOpenStatistics: (runId: number | null) => void
 }) {
   const { runId } = useParams<{ runId: string }>()
   const parsedRunId = runId ? parseValidRunId(runId) : null
 
   return (
     <MiningDashboard
+      formData={formData}
+      setFormData={setFormData}
       key={parsedRunId ?? 'invalid'}
       initialRunId={parsedRunId}
       loadRequestKey={parsedRunId ?? 0}
@@ -83,6 +90,8 @@ function AppShell() {
   const [statistics, setStatistics] = useState<RepositoryStatistics | null>(null)
   const [showEliminatedRepositoryStats, setShowEliminatedRepositoryStats] = useState(false)
   const [oldRunId, setOldRunId] = useState('')
+  const [formData, setFormData] = useState<SearchFormData>(INITIAL_SEARCH_FORM_DATA)
+  const [statisticsRunId, setStatisticsRunId] = useState<number | null>(null)
 
   const openNewSearch = () => {
     setStatistics(null)
@@ -98,7 +107,12 @@ function AppShell() {
     navigate(`/runs/${parsedRunId}`)
   }
 
-  const openStatistics = () => navigate('/statistics')
+  const openStatistics = (runId: number | null) => {
+    setStatisticsRunId(runId)
+    navigate('/statistics')
+  }
+  // Volta para a mineração: reabre a execução (resultados) quando houver, com o formulário preservado.
+  const miningPath = statisticsRunId ? `/runs/${statisticsRunId}` : '/dashboard'
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
@@ -148,6 +162,8 @@ function AppShell() {
             path="/dashboard"
             element={
               <MiningDashboard
+                formData={formData}
+                setFormData={setFormData}
                 initialRunId={null}
                 onStatisticsChange={setStatistics}
                 onEliminatedRepositoryStatsVisibilityChange={setShowEliminatedRepositoryStats}
@@ -159,6 +175,8 @@ function AppShell() {
             path="/runs/:runId"
             element={
               <RunDashboardRoute
+                formData={formData}
+                setFormData={setFormData}
                 onStatisticsChange={setStatistics}
                 onEliminatedRepositoryStatsVisibilityChange={setShowEliminatedRepositoryStats}
                 onOpenStatistics={openStatistics}
@@ -171,6 +189,7 @@ function AppShell() {
               <StatisticsPage
                 statistics={statistics}
                 showEliminatedRepositoryStats={showEliminatedRepositoryStats}
+                miningPath={miningPath}
               />
             }
           />
