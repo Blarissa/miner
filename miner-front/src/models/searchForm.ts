@@ -2,6 +2,9 @@ import type { SearchFormData } from "./types";
 
 /** Valores iniciais do formulário de mineração. */
 export const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
+    search_mode: "term",
+    term: "mockito",
+    term_coverage: "ampla",
     queries: ["mockito"],
     search_type: "code",
     // file_path: "",  // valor anterior (commit bc4db50)
@@ -17,7 +20,6 @@ export const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     persist_eliminated_repositories: false,
     include_statistics: true,
     statistics_scope: "accepted",
-    github_token: "",
     language: "Java",
     java_version: "",
     stars: "",

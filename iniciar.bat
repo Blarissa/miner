@@ -49,9 +49,18 @@ exit /b 1
 
 :imagem_ok
 
+if not defined GITHUB_TOKEN (
+    echo.
+    echo AVISO: a variavel de ambiente GITHUB_TOKEN nao esta definida neste computador.
+    echo O Miner abre, mas nao consegue buscar no GitHub ate voce defini-la.
+    echo Para definir uma vez, no PowerShell:  setx GITHUB_TOKEN "seu_token"
+    echo Depois feche esta janela e execute este arquivo de novo.
+    echo.
+)
+
 docker rm -f %CONTAINER% >nul 2>&1
 echo Iniciando o Miner...
-docker run -d --rm --name %CONTAINER% -p %PORTA%:10000 -v miner-data:/app/data %IMAGEM% >nul
+docker run -d --rm --name %CONTAINER% --pids-limit 8192 -e GITHUB_TOKEN -p %PORTA%:10000 -v miner-data:/app/data %IMAGEM% >nul
 if errorlevel 1 (
     echo Nao foi possivel iniciar. Se a porta %PORTA% estiver em uso, feche o programa que a usa e tente de novo.
     pause

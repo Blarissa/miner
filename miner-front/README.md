@@ -108,7 +108,7 @@ Para usar a aplicação corretamente, o backend precisa estar rodando antes ou d
 2. Suba o front com `npm run dev`.
 3. Acesse `http://localhost:5173`.
 4. Na tela inicial, escolha `Nova busca` para iniciar uma mineração ou informe um Run ID antigo para carregar uma execução persistida.
-5. Na tela de mineração, informe a query, o token do GitHub se necessário, os filtros e as opções de análise.
+5. Na tela de mineração, informe o termo (ou as queries no modo Avançado), os filtros e as opções de análise.
 6. Clique em `Iniciar Mineração`.
 7. Acompanhe o progresso, os repositórios retornados e as estatísticas.
 
@@ -156,7 +156,7 @@ O preview usa os arquivos de `dist/`. A URL do backend continua vindo de `VITE_A
 
 ## Observações Importantes
 
-- A busca de código do GitHub exige autenticação. Informe o token no formulário ou configure `GITHUB_TOKEN` no backend.
+- A busca de código do GitHub exige autenticação. O token vem da variável `GITHUB_TOKEN` do backend; a tela só mostra se ele foi encontrado e se é válido.
 - O front não minera repositórios sozinho; ele apenas chama a API do backend.
 - As execuções ficam salvas no banco SQLite do backend, não no navegador.
 - Para carregar uma execução antiga, use o Run ID exibido durante a mineração.

@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.services.term_expansion import expand_term
+
 
 class ContentRuleRequest(BaseModel):
     field_name: str = Field(examples=["java_version"])
@@ -43,6 +45,9 @@ class GitHubSearchFilterRequest(BaseModel):
     filename: str | None = None
     extension: str | None = None
     path: str | None = None
+    file_size: str | None = None  # tamanho do arquivo (bytes) na busca de código
+    term_evidence: str | None = None  # codigo | import | dependencia (modo por termo)
+    term_text: str | None = None
     sort: str | None = None
     order: Literal["asc", "desc"] | None = None
     per_page: int = Field(default=100, ge=1, le=100)
@@ -103,7 +108,6 @@ class RepositoryFilterRequest(BaseModel):
 
 
 class SearchRepositoriesRequest(BaseModel):
-    github_token: str | None = None
     max_repos: int = Field(default=100, ge=1, le=5000)
     max_workers: int = Field(default=5, ge=1, le=20)
     analyzer_workers: int = Field(default=4, ge=1, le=8)
@@ -116,6 +120,40 @@ class SearchRepositoriesRequest(BaseModel):
     include_statistics: bool = True
     statistics_scope: Literal["all", "accepted", "eliminated"] = "accepted"
     filters: list[GitHubSearchFilterRequest] = Field(default_factory=list)
+    # Modo por termo: o usuário informa só o termo e as buscas são geradas a partir dele.
+    term: str | None = None
+    term_coverage: Literal["rapida", "ampla"] = "ampla"
+
+    @model_validator(mode="after")
+    def build_filters_from_term(self) -> SearchRepositoriesRequest:
+        term = (self.term or "").strip()
+        if not term:
+            self.term = None
+            return self
+        try:
+            expansion = expand_term(term, coverage=self.term_coverage)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
+        # Os demais campos (estrelas, datas, etc.) vêm do primeiro filtro enviado, se houver.
+        template = self.filters[0] if self.filters else GitHubSearchFilterRequest(
+            name="termo", search_type="code", query="termo"
+        )
+        self.term = expansion.term
+        self.filters = [
+            template.model_copy(update={
+                "name": f"termo-{index}",
+                "search_type": "code",
+                "query": item.query,
+                "queries": [],
+                "filename": item.filename,
+                "extension": item.extension,
+                "file_size": item.file_size,
+                "term_evidence": item.evidence,
+                "term_text": item.text,
+            })
+            for index, item in enumerate(expansion.queries, start=1)
+        ]
+        return self
 
     @model_validator(mode="after")
     def expand_multi_query_filters(self) -> SearchRepositoriesRequest:

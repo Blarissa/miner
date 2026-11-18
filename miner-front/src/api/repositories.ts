@@ -4,7 +4,9 @@ import type {
     RepositoryFilterOptions,
     SearchRepositoriesProgress,
     SearchRepositoriesResult,
+    GithubStatus,
     SearchFormData,
+    TermPreview,
 } from "../models/types";
 
 // Desenvolvimento (Vite): backend em localhost:8000. Build de produção (imagem Docker): mesmo endereço, sem prefixo.
@@ -62,7 +64,7 @@ const NETWORK_ERROR_MESSAGE =
     "(no Render ele pode levar cerca de um minuto para acordar) e tente novamente.";
 
 function friendlyHttpMessage(status: number): string {
-    if (status === 401 || status === 403) return "Acesso negado. Confira se o token do GitHub é válido e tem permissão.";
+    if (status === 401 || status === 403) return "Acesso negado. Confira se o GITHUB_TOKEN do servidor é válido e tem permissão.";
     if (status === 404) return "Item não encontrado no servidor. Ele pode ter sido apagado quando o servidor reiniciou.";
     if (status === 409) return "Esta consulta já está em andamento.";
     if (status === 422) return "Algum campo do formulário está inválido. Revise os filtros e tente de novo.";
@@ -205,18 +207,37 @@ function normalizeRepository(item: RawRepository): AnalyzedRepo {
     };
 }
 
+export async function getGithubStatus(): Promise<GithubStatus> {
+    return requestJson<GithubStatus>("/health/github");
+}
+
 export async function getHealth(): Promise<{ status: string }> {
     return requestJson<{ status: string }>("/health");
 }
 
+export async function previewTermExpansion(
+    term: string,
+    coverage: SearchFormData["term_coverage"],
+): Promise<TermPreview> {
+    return requestJson<TermPreview>("/repositories/expand-term", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ term: term.trim(), coverage }),
+    });
+}
+
 function buildSearchPayload(formData: SearchFormData) {
     const analyzerWillRun = formData.require_buildable || formData.require_tests_passed;
-    const queries = formData.queries.map((query) => query.trim()).filter(Boolean);
+    const termMode = formData.search_mode === "term";
+    // No modo por termo, o backend gera as buscas; aqui vai só um filtro-base com os demais campos.
+    const queries = termMode
+        ? [formData.term.trim()].filter(Boolean)
+        : formData.queries.map((query) => query.trim()).filter(Boolean);
     const filters = queries.map((query, index) => ({
         name: queries.length === 1 ? "custom-search" : `custom-search-${index + 1}`,
-        search_type: formData.search_type,
+        search_type: termMode ? "code" : formData.search_type,
         query,
-        file_path: formData.file_path || undefined,
+        file_path: termMode ? undefined : formData.file_path || undefined,
         search_in: formData.search_in.length > 0 ? formData.search_in : undefined,
         language: "Java",
         stars: optionalText(formData.stars),
@@ -250,8 +271,8 @@ function buildSearchPayload(formData: SearchFormData) {
                 : undefined,
         good_first_issues: optionalText(formData.good_first_issues),
         help_wanted_issues: optionalText(formData.help_wanted_issues),
-        filename: optionalText(formData.filename),
-        extension: optionalText(formData.extension),
+        filename: termMode ? undefined : optionalText(formData.filename),
+        extension: termMode ? undefined : optionalText(formData.extension),
         path: optionalText(formData.path),
         sort: optionalText(formData.sort),
         order: formData.order || undefined,
@@ -260,7 +281,6 @@ function buildSearchPayload(formData: SearchFormData) {
     }));
 
     return {
-        github_token: formData.github_token.trim() || undefined,
         max_repos: Number(formData.max_repos),
         max_workers: 4,
         analyzer_workers: 4,
@@ -272,6 +292,8 @@ function buildSearchPayload(formData: SearchFormData) {
         persist_eliminated_repositories: formData.persist_eliminated_repositories,
         include_statistics: formData.include_statistics,
         statistics_scope: formData.statistics_scope,
+        term: termMode ? formData.term.trim() : undefined,
+        term_coverage: termMode ? formData.term_coverage : undefined,
         filters,
     };
 

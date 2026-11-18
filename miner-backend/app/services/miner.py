@@ -10,7 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import quote
 
 from app.core import config
@@ -18,6 +18,7 @@ from app.core import config
 import requests
 
 from app.services.filters import ContentRule, GitHubSearchFilter, GitHubSearchType
+from app.services.term_triage import confirm_evidence
 from app.schemas.repository_models import MinedRepo, RepoCandidate, mined_repo_from_candidate
 
 _ETAG_CACHE_MAX_ENTRIES = 2000
@@ -279,6 +280,11 @@ def sleep_with_backoff(attempt: int) -> None:
     time.sleep((2**attempt) + random.uniform(0, BACKOFF_JITTER_SECONDS))
 
 
+# Modo por termo: quantos arquivos que casaram são guardados e lidos por repositório.
+MAX_MATCHES_PER_CANDIDATE = 20
+MAX_TRIAGE_FILES = 5
+
+
 def repo_meta_to_candidate(repo_meta: dict[str, Any], source_filter: str) -> RepoCandidate:
     return RepoCandidate( 
         full_name=repo_meta.get("full_name", ""),
@@ -308,16 +314,22 @@ def merge_candidate_metadata(existing: RepoCandidate, candidate: RepoCandidate) 
         existing.raw["_matches"] = matches
 
     matched_path = candidate.raw.get("_matched_path")
-    if matched_path and matched_path not in {
-        item.get("path") for item in matches if isinstance(item, dict)
-    }:
-        matches.append(
-            {
-                "path": matched_path,
-                "html_url": candidate.raw.get("_matched_file_url"),
-                "source_filter": candidate.source_filter,
-            }
-        )
+    candidate_matches = [
+        item for item in candidate.raw.get("_matches", []) if isinstance(item, dict)
+    ] or (
+        [{"path": matched_path, "html_url": candidate.raw.get("_matched_file_url"),
+          "source_filter": candidate.source_filter}]
+        if matched_path else []
+    )
+    known = {
+        (item.get("path"), item.get("term_text"))
+        for item in matches if isinstance(item, dict)
+    }
+    for match in candidate_matches:
+        key = (match.get("path"), match.get("term_text"))
+        if match.get("path") and key not in known and len(matches) < MAX_MATCHES_PER_CANDIDATE:
+            known.add(key)
+            matches.append(dict(match))
 
 
 def is_usable_candidate(candidate: RepoCandidate) -> bool:
@@ -463,16 +475,15 @@ def candidate_from_search_item(
     candidate = repo_meta_to_candidate(repo_meta, search_filter.name)
     candidate.raw["_matched_path"] = item.get("path")
     candidate.raw["_matched_file_url"] = item.get("html_url")
-    candidate.raw.setdefault(
-        "_matches",
-        [
-            {
-                "path": item.get("path"),
-                "html_url": item.get("html_url"),
-                "source_filter": search_filter.name,
-            }
-        ],
-    )
+    match: dict[str, Any] = {
+        "path": item.get("path"),
+        "html_url": item.get("html_url"),
+        "source_filter": search_filter.name,
+    }
+    if search_filter.term_evidence and search_filter.term_text:
+        match["term_evidence"] = search_filter.term_evidence
+        match["term_text"] = search_filter.term_text
+    candidate.raw.setdefault("_matches", [match])
     return candidate
 
 
@@ -579,6 +590,10 @@ def search_filter_candidates_page(
     return candidates, total, has_next_page
 
 
+# A busca de codigo do GitHub so permite ler os primeiros 1000 resultados de uma consulta.
+CODE_SEARCH_RESULT_CAP = 1000
+
+
 def fetch_mining_page(
     token: str,
     filters: list[GitHubSearchFilter],
@@ -587,13 +602,25 @@ def fetch_mining_page(
     delay: float,
     seen_keys: set[str],
     session: requests.Session | None = None,
+    on_filter_done: Callable[[int, int, int], bool | None] | None = None,
 ) -> MiningPage:
     session = session or build_session(token)
     candidates_by_key: dict[str, tuple[int, RepoCandidate, GitHubSearchFilter]] = {}
     total_count = 0
     has_next_page = False
 
-    for search_filter in filters:
+    base_totals: dict[tuple[str, str], int] = {}
+    skipped_slices = 0
+
+    for filter_index, search_filter in enumerate(filters, start=1):
+        term_key = (search_filter.term_evidence or "", search_filter.term_text or "")
+        is_slice = bool(term_key[0]) and " size:" in search_filter.query
+        if is_slice and base_totals.get(term_key, CODE_SEARCH_RESULT_CAP + 1) <= CODE_SEARCH_RESULT_CAP:
+            # A consulta sem fatia ja alcanca todos os resultados: fatiar so gastaria cota.
+            skipped_slices += 1
+            if on_filter_done is not None and on_filter_done(filter_index, len(filters), len(candidates_by_key)) is True:
+                break
+            continue
         candidates, filter_total, filter_has_next = search_filter_candidates_page(
             session=session,
             search_filter=search_filter,
@@ -603,6 +630,8 @@ def fetch_mining_page(
         )
         total_count += filter_total
         has_next_page = has_next_page or filter_has_next
+        if term_key[0] and not is_slice:
+            base_totals[term_key] = filter_total
 
         for page_index, candidate in enumerate(candidates):
             key = candidate_key(candidate)
@@ -612,6 +641,16 @@ def fetch_mining_page(
                 merge_candidate_metadata(candidates_by_key[key][1], candidate)
                 continue
             candidates_by_key[key] = (page_index, candidate, search_filter)
+
+        if on_filter_done is not None:
+            # Avisa o progresso a cada consulta: com muitos filtros (modo termo)
+            # a pagina inteira leva minutos e a tela parecia travada.
+            # Se o callback devolver True (execucao cancelada), para de consultar.
+            if on_filter_done(filter_index, len(filters), len(candidates_by_key)) is True:
+                break
+
+    if skipped_slices:
+        log.info("Pagina %s | %s consultas por faixa de tamanho puladas (a consulta base cabe em %s resultados).", page, skipped_slices, CODE_SEARCH_RESULT_CAP)
 
     return MiningPage(
         candidates=list(candidates_by_key.values()),
@@ -862,6 +901,52 @@ def candidate_pom_lookup_paths(content_path: str | None) -> list[str]:
     return unique_paths
 
 
+@dataclass
+class TermTriage:
+    confirmed: bool
+    path: str | None
+    content: str | None
+    evidence: str | None
+    text: str | None
+    reason: str
+
+
+def triage_term_matches(
+    session: requests.Session,
+    candidate: RepoCandidate,
+    delay: float,
+) -> TermTriage | None:
+    """Confirma pela API que algum arquivo que casou usa de fato o termo.
+
+    Devolve None quando a busca não veio do modo por termo (nada a confirmar).
+    Só lê arquivos pela API do GitHub; nada é clonado nem executado.
+    """
+    matches = [
+        item for item in candidate.raw.get("_matches", [])
+        if isinstance(item, dict) and item.get("term_evidence") and item.get("term_text") and item.get("path")
+    ]
+    if not matches:
+        return None
+
+    contents: dict[str, str | None] = {}
+    last_reason = "termo_ausente_no_arquivo"
+    for match in matches:
+        path = str(match["path"])
+        if path not in contents:
+            if len(contents) >= MAX_TRIAGE_FILES:
+                continue
+            contents[path] = fetch_file_content(session, candidate.full_name, path, delay)
+        content = contents[path]
+        if content is None:
+            last_reason = "arquivo_indisponivel"
+            continue
+        result = confirm_evidence(str(match["term_evidence"]), str(match["term_text"]), content)
+        if result.confirmed:
+            return TermTriage(True, path, content, str(match["term_evidence"]), str(match["term_text"]), result.reason)
+        last_reason = result.reason
+    return TermTriage(False, None, None, None, None, last_reason)
+
+
 def analyze_candidate(
     session: requests.Session,
     candidate: RepoCandidate,
@@ -899,8 +984,28 @@ def analyze_candidate(
     )
     pom_content = None
 
+    triage = triage_term_matches(session, candidate, delay)
+    prefetched_content: str | None = None
+    if triage is not None:
+        if not triage.confirmed:
+            log.info(
+                "Candidato rejeitado | %s | motivo=triagem_termo_nao_confirmado | detalhe=%s",
+                candidate.full_name,
+                triage.reason,
+            )
+            return None
+        content_path = triage.path
+        prefetched_content = triage.content
+        metadata["term_evidence"] = triage.evidence
+        metadata["term_match"] = triage.text
+        metadata["term_confirmation"] = triage.reason
+
     if content_path:
-        content = fetch_file_content(session, candidate.full_name, content_path, delay)
+        content = (
+            prefetched_content
+            if prefetched_content is not None
+            else fetch_file_content(session, candidate.full_name, content_path, delay)
+        )
         if content is None:
             log.info(
                 "Candidato rejeitado | %s | motivo=arquivo_correspondente_indisponivel | arquivo=%s",
@@ -916,15 +1021,19 @@ def analyze_candidate(
             if java_version:
                 metadata["java_version"] = java_version
 
-        ok, extracted = apply_content_rules(content, search_filter.content_rules)
-        if not ok:
-            log.info(
-                "Candidato rejeitado | %s | motivo=regra_de_conteudo_nao_atendida | arquivo=%s",
-                candidate.full_name,
-                content_path,
-            )
-            return None
-        metadata.update(extracted)
+        # No modo por termo o arquivo que casou costuma ser .java; as regras de pom.xml
+        # (ex.: versão do Java) valem para o pom e são aplicadas mais abaixo.
+        defer_rules_to_pom = triage is not None and not content_path.lower().endswith("pom.xml")
+        if not defer_rules_to_pom:
+            ok, extracted = apply_content_rules(content, search_filter.content_rules)
+            if not ok:
+                log.info(
+                    "Candidato rejeitado | %s | motivo=regra_de_conteudo_nao_atendida | arquivo=%s",
+                    candidate.full_name,
+                    content_path,
+                )
+                return None
+            metadata.update(extracted)
     elif search_filter.content_rules:
         log.info(
             "Candidato rejeitado | %s | motivo=regra_de_conteudo_sem_arquivo_correspondente",
@@ -951,6 +1060,17 @@ def analyze_candidate(
         java_version = extract_java_version_from_pom(pom_content)
         if java_version and "java_version" not in metadata:
             metadata["java_version"] = java_version
+
+        if triage is not None:
+            ok, extracted = apply_content_rules(pom_content, search_filter.content_rules)
+            if not ok:
+                log.info(
+                    "Candidato rejeitado | %s | motivo=regra_de_conteudo_nao_atendida | arquivo=%s",
+                    candidate.full_name,
+                    metadata.get("matched_pom_path"),
+                )
+                return None
+            metadata.update(extracted)
 
     default_branch = str(candidate.raw.get("default_branch") or "").strip()
     if default_branch:

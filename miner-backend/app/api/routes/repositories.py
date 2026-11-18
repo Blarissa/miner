@@ -1,13 +1,15 @@
 ﻿
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.schemas.repository_requests import RepositoryFilterRequest, SearchRepositoriesRequest
 from app.services.filters import filters_from_payload
+from app.services.term_expansion import expand_term
 from app.services.mining_runner import (
     calculate_acceptance_rate,
     calculate_analyzer_batch_size,
@@ -30,6 +32,17 @@ from app.services.statistics import build_statistics
 
 router = APIRouter(prefix="/repositories", tags=["repositories"])
 log = logging.getLogger(__name__)
+
+
+def server_github_token() -> str:
+    """O token vem só do ambiente do servidor (GITHUB_TOKEN); nunca do navegador."""
+    token = (settings.github_token or "").strip()
+    if not token:
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub token nao configurado no servidor. Defina a variavel de ambiente GITHUB_TOKEN e reinicie o Miner.",
+        )
+    return token
 
 
 def payload_bool(value: Any, default: bool = False) -> bool:
@@ -95,12 +108,24 @@ def run_status_response(run: dict[str, Any]) -> dict[str, Any]:
     return response
 
 
+class ExpandTermRequest(BaseModel):
+    term: str
+    coverage: Literal["rapida", "ampla"] = "ampla"
+
+
+@router.post("/expand-term")
+def expand_search_term(payload: ExpandTermRequest) -> dict[str, Any]:
+    """Mostra as buscas que seriam feitas para o termo, sem consultar o GitHub."""
+    try:
+        return expand_term(payload.term, coverage=payload.coverage).to_dict()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/search", status_code=status.HTTP_202_ACCEPTED)
 def search_repositories(payload: SearchRepositoriesRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
     payload_data = payload.model_dump()
-    token = payload.github_token or settings.github_token
-    if not token:
-        raise HTTPException(status_code=400, detail="GitHub token nao informado.")
+    token = server_github_token()
 
     filters = filters_from_payload(payload_data)
     if not filters:
@@ -134,9 +159,7 @@ def resume_repository_run(run_id: int, background_tasks: BackgroundTasks) -> dic
     saved_filters = get_search_filters_for_run(run_id)
     if not saved_filters:
         raise HTTPException(status_code=400, detail="Run nao possui filtros salvos para retomar.")
-    token = settings.github_token
-    if not token:
-        raise HTTPException(status_code=400, detail="GitHub token nao configurado para retomar a run.")
+    token = server_github_token()
 
     payload = payload_from_saved_run(run, saved_filters)
     filters = filters_from_payload(payload.model_dump())

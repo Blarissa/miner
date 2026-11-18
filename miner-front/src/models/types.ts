@@ -161,7 +161,45 @@ export interface SearchRepositoriesProgress {
     statistics?: SearchRepositoriesResult["statistics"];
 }
 
+/** Estado do GITHUB_TOKEN configurado no servidor (o token em si nunca chega ao navegador). */
+export interface GithubStatus {
+    configured: boolean;
+    /** null = não deu para verificar agora (sem rede ou GitHub fora do ar). */
+    valid: boolean | null;
+    detail: string;
+    code_search_limit?: number;
+    code_search_remaining?: number;
+}
+
+export interface TermPreviewQuery {
+    query: string;
+    evidence: "codigo" | "import" | "import_prefix" | "dependencia";
+    filename: string | null;
+    extension: string | null;
+    file_size: string | null;
+    note: string;
+}
+
+export interface TermPreviewArtifact {
+    group: string;
+    artifact: string;
+    versions: number;
+}
+
+export interface TermPreview {
+    term: string;
+    from_catalog: boolean;
+    /** catalogo | maven_central | cache | sem_resultado | indisponivel | desligado */
+    source: string;
+    artifacts: TermPreviewArtifact[];
+    queries: TermPreviewQuery[];
+}
+
 export interface SearchFormData {
+    /** "term": o usuário informa só o termo e o backend gera as buscas. "advanced": queries escritas à mão. */
+    search_mode: "term" | "advanced";
+    term: string;
+    term_coverage: "rapida" | "ampla";
     queries: string[];
     search_type: "code" | "repositories";
     file_path: string;
@@ -176,7 +214,6 @@ export interface SearchFormData {
     persist_eliminated_repositories: boolean;
     include_statistics: boolean;
     statistics_scope: StatisticsScope;
-    github_token: string;
     language: string;
     java_version: "" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26";
     stars: string;

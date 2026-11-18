@@ -27,16 +27,20 @@ import {
     cancelRepositoryRun,
     getRepositoryRun,
     getRunRepositories,
+    getGithubStatus,
     getRunStatistics,
+    previewTermExpansion,
     resumeRepositoryRun,
     searchRepositories,
 } from "../api/repositories";
 import type {
     AnalyzedRepo,
+    GithubStatus,
     MiningRunStatus,
     RepositoryStatistics,
     SearchFormData,
     SearchRepositoriesResult,
+    TermPreview,
 } from "../models/types";
 import { Button, Card, Checkbox, FieldError, FieldLabel, Modal, Select, TextInput } from "./ui";
 import { progressStageLabel, runStatusLabel } from "../models/runLabels";
@@ -50,6 +54,34 @@ interface MiningDashboardProps {
     onStatisticsChange: (statistics: RepositoryStatistics | null) => void;
     onEliminatedRepositoryStatsVisibilityChange: (visible: boolean) => void;
     onOpenStatistics: (runId: number | null) => void;
+}
+
+function evidenceLabel(evidence: TermPreview["queries"][number]["evidence"]): string {
+    switch (evidence) {
+        case "codigo":
+            return "código";
+        case "import":
+            return "import";
+        case "import_prefix":
+            return "import (grupo)";
+        default:
+            return "pom.xml";
+    }
+}
+
+function termSourceMessage(preview: TermPreview): string {
+    const libraries = preview.artifacts.map((item) => `${item.group}:${item.artifact}`).join(", ");
+    switch (preview.source) {
+        case "maven_central":
+        case "cache":
+            return `Termo fora do catálogo. Bibliotecas encontradas no Maven Central: ${libraries}.`;
+        case "sem_resultado":
+            return "Termo fora do catálogo e sem biblioteca correspondente no Maven Central: só variações do nome. Confira se faltou algo.";
+        case "indisponivel":
+            return "Termo fora do catálogo e o Maven Central não respondeu: só variações do nome. Tente de novo em instantes.";
+        default:
+            return "Termo fora do catálogo: só variações do nome. Confira se faltou algo.";
+    }
 }
 
 function errorMessage(error: unknown): string {
@@ -236,23 +268,74 @@ export default function MiningDashboard({
 
     const [showValidation, setShowValidation] = useState<boolean>(false);
 
+    // Pré-visualização das buscas geradas a partir do termo. Guarda a chave usada para
+    // esconder o resultado quando o termo ou a cobertura mudam depois de gerar.
+    const [termPreview, setTermPreview] = useState<{ key: string; data: TermPreview } | null>(null);
+    const [termPreviewLoading, setTermPreviewLoading] = useState<boolean>(false);
+    const [termPreviewError, setTermPreviewError] = useState<string | null>(null);
+    // Estado do GITHUB_TOKEN do servidor. null = ainda verificando ou sem resposta.
+    const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null);
+    const [githubStatusLoading, setGithubStatusLoading] = useState<boolean>(false);
+    const githubBlocked = githubStatus !== null && (!githubStatus.configured || githubStatus.valid === false);
+
+    const refreshGithubStatus = useCallback(async () => {
+        setGithubStatusLoading(true);
+        try {
+            setGithubStatus(await getGithubStatus());
+        } catch (error: unknown) {
+            console.error("Falha ao verificar o GITHUB_TOKEN:", error);
+            setGithubStatus(null);
+        } finally {
+            setGithubStatusLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        void refreshGithubStatus();
+    }, [refreshGithubStatus]);
+
+    const termMode = formData.search_mode === "term";
+    const termKey = `${formData.term.trim()}|${formData.term_coverage}`;
+    const visibleTermPreview = termPreview && termPreview.key === termKey ? termPreview.data : null;
+
     const formErrors = useMemo(() => {
-        const emptyQueryIndexes = formData.queries
-            .map((query, index) => (query.trim() === "" ? index : -1))
-            .filter((index) => index >= 0);
+        const emptyQueryIndexes = formData.search_mode === "advanced"
+            ? formData.queries
+                .map((query, index) => (query.trim() === "" ? index : -1))
+                .filter((index) => index >= 0)
+            : [];
+        const trimmedTerm = formData.term.trim();
         return {
             emptyQueryIndexes,
-            githubToken: formData.github_token.trim() === "",
+            termEmpty: formData.search_mode === "term" && trimmedTerm === "",
+            termInvalid: formData.search_mode === "term" && /["':()\\]/.test(trimmedTerm),
             searchType: !formData.search_type,
             maxRepos: !Number.isInteger(formData.max_repos) || formData.max_repos < 1,
         };
-    }, [formData.queries, formData.github_token, formData.search_type, formData.max_repos]);
+    }, [formData.search_mode, formData.term, formData.queries, formData.search_type, formData.max_repos]);
 
     const hasFormErrors =
         formErrors.emptyQueryIndexes.length > 0 ||
-        formErrors.githubToken ||
+        formErrors.termEmpty ||
+        formErrors.termInvalid ||
         formErrors.searchType ||
         formErrors.maxRepos;
+
+    const handlePreviewTerm = async () => {
+        setShowValidation(true);
+        if (formErrors.termEmpty || formErrors.termInvalid) return;
+        setTermPreviewLoading(true);
+        setTermPreviewError(null);
+        try {
+            const data = await previewTermExpansion(formData.term, formData.term_coverage);
+            setTermPreview({ key: termKey, data });
+        } catch (error: unknown) {
+            setTermPreview(null);
+            setTermPreviewError(errorMessage(error));
+        } finally {
+            setTermPreviewLoading(false);
+        }
+    };
 
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -260,11 +343,9 @@ export default function MiningDashboard({
         if (hasFormErrors) {
             const firstInvalidId = formErrors.emptyQueryIndexes.length > 0
                 ? `field-query-${formErrors.emptyQueryIndexes[0]}`
-                : formErrors.githubToken
-                    ? "field-github-token"
-                    : formErrors.searchType
-                        ? "field-search-type"
-                        : "field-max-repos";
+                : formErrors.searchType
+                    ? "field-search-type"
+                    : "field-max-repos";
             document.getElementById(firstInvalidId)?.focus();
             return;
         }
@@ -450,7 +531,109 @@ export default function MiningDashboard({
                 {/* Formulário de Busca */}
                 <section className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-6 shadow-md">
                     <form onSubmit={handleSearch} noValidate className="space-y-4">
+                        <div role="group" aria-label="Modo de busca" className="inline-flex rounded-lg border border-slate-700 bg-slate-900 p-0.5">
+                            {([
+                                ["term", "Por termo"],
+                                ["advanced", "Avançado"],
+                            ] as const).map(([mode, label]) => (
+                                <button
+                                    key={mode}
+                                    type="button"
+                                    aria-pressed={formData.search_mode === mode}
+                                    onClick={() => setFormData({ ...formData, search_mode: mode })}
+                                    className={`rounded-md px-3 py-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
+                                        formData.search_mode === mode
+                                            ? "bg-cyan-500/20 text-cyan-200"
+                                            : "text-slate-400 hover:text-slate-200"
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {termMode && (
+                                <div className="md:col-span-2 space-y-3">
+                                    <div>
+                                        <FieldLabel htmlFor="field-term" required>
+                                            Termo a buscar
+                                        </FieldLabel>
+                                        <div className="flex items-start gap-2">
+                                            <div className="flex-1">
+                                                <TextInput
+                                                    id="field-term"
+                                                    icon={<Search />}
+                                                    type="text"
+                                                    value={formData.term}
+                                                    onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+                                                    placeholder="Ex: JDBC Template"
+                                                    aria-required="true"
+                                                    invalid={showValidation && (formErrors.termEmpty || formErrors.termInvalid)}
+                                                    aria-describedby="field-term-help"
+                                                />
+                                            </div>
+                                            <Button type="button" variant="secondary" onClick={handlePreviewTerm} disabled={termPreviewLoading}>
+                                                {termPreviewLoading ? "Gerando..." : "Ver buscas"}
+                                            </Button>
+                                        </div>
+                                        <p id="field-term-help" className="mt-1.5 text-xs text-slate-400">
+                                            Digite só o nome da tecnologia. O Miner procura a classe, o import e a dependência no pom.xml.
+                                        </p>
+                                        {showValidation && formErrors.termEmpty && (
+                                            <FieldError id="field-term-error">Informe o termo a buscar.</FieldError>
+                                        )}
+                                        {showValidation && formErrors.termInvalid && (
+                                            <FieldError id="field-term-error">
+                                                Use só o nome do termo, sem aspas, dois-pontos ou parênteses.
+                                            </FieldError>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <FieldLabel htmlFor="field-term-coverage">Cobertura</FieldLabel>
+                                        <Select
+                                            id="field-term-coverage"
+                                            value={formData.term_coverage}
+                                            onChange={(e) =>
+                                                setFormData({ ...formData, term_coverage: e.target.value as "rapida" | "ampla" })
+                                            }
+                                        >
+                                            <option value="ampla">Ampla (acha mais repositórios, demora mais)</option>
+                                            <option value="rapida">Rápida (uma busca por evidência)</option>
+                                        </Select>
+                                    </div>
+
+                                    {termPreviewError && (
+                                        <p role="alert" className="text-xs text-rose-300">{termPreviewError}</p>
+                                    )}
+                                    {visibleTermPreview && (
+                                        <div className="rounded-lg border border-slate-700/60 bg-slate-900/60 p-3 text-xs text-slate-300">
+                                            <p className="mb-2 font-semibold text-slate-200">
+                                                {visibleTermPreview.queries.length} buscas serão feitas
+                                            </p>
+                                            {!visibleTermPreview.from_catalog && (
+                                                <p className="mb-2 text-slate-400">
+                                                    {termSourceMessage(visibleTermPreview)}
+                                                </p>
+                                            )}
+                                            <ul className="max-h-48 space-y-1 overflow-y-auto">
+                                                {visibleTermPreview.queries.map((item, index) => (
+                                                    <li key={index} className="flex gap-2">
+                                                        <span className="w-20 shrink-0 text-cyan-300">
+                                                            {evidenceLabel(item.evidence)}
+                                                        </span>
+                                                        <span className="break-all font-mono">{item.query}</span>
+                                                        {item.file_size && (
+                                                            <span className="shrink-0 text-slate-500">{item.file_size} bytes</span>
+                                                        )}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                            {!termMode && (
                             <div className="md:col-span-2">
                                 <div className="flex items-center justify-between gap-3 mb-1.5">
                                     <FieldLabel htmlFor="field-query-0" required className="">
@@ -504,33 +687,47 @@ export default function MiningDashboard({
                                     </FieldError>
                                 )}
                             </div>
+                            )}
 
                             <div>
-                                <FieldLabel htmlFor="field-github-token" required>
-                                    GitHub Token
-                                </FieldLabel>
-                                <TextInput
-                                    id="field-github-token"
-                                    type="password"
-                                    value={formData.github_token}
-                                    onChange={(e) => setFormData({ ...formData, github_token: e.target.value })}
-                                    placeholder="ghp_..."
-                                    className="transition"
-                                    aria-required="true"
-                                    invalid={showValidation && formErrors.githubToken}
-                                    aria-describedby={
-                                        showValidation && formErrors.githubToken
-                                            ? "field-github-token-error field-github-token-hint"
-                                            : "field-github-token-hint"
-                                    }
-                                />
-                                {showValidation && formErrors.githubToken && (
-                                    <FieldError id="field-github-token-error">Informe o token do GitHub.</FieldError>
-                                )}
-                                <p id="field-github-token-hint" className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-400">
-                                    <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                                    <span>Usado só durante a execução. Não é salvo no banco de dados.</span>
-                                </p>
+                                <p className="mb-1.5 text-xs font-semibold text-slate-300">Acesso ao GitHub</p>
+                                <div
+                                    role="status"
+                                    className={`rounded-lg border px-3 py-2 text-xs ${
+                                        githubBlocked
+                                            ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                                            : githubStatus?.valid
+                                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                                                : "border-slate-700 bg-slate-900/60 text-slate-300"
+                                    }`}
+                                >
+                                    <p className="flex items-start gap-1.5">
+                                        <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                                        <span>
+                                            {githubStatus === null
+                                                ? githubStatusLoading ? "Verificando o token do servidor..." : "Não foi possível verificar o token agora."
+                                                : githubStatus.detail}
+                                        </span>
+                                    </p>
+                                    {githubStatus?.valid && githubStatus.code_search_remaining !== undefined && (
+                                        <p className="mt-1 text-slate-400">
+                                            Buscas de código restantes neste minuto: {githubStatus.code_search_remaining} de {githubStatus.code_search_limit}.
+                                        </p>
+                                    )}
+                                    {githubStatus && !githubStatus.configured && (
+                                        <p className="mt-1">
+                                            Defina a variável de ambiente <code>GITHUB_TOKEN</code> no computador e reinicie o Miner.
+                                        </p>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => void refreshGithubStatus()}
+                                        disabled={githubStatusLoading}
+                                        className="mt-1.5 font-semibold text-cyan-300 hover:text-cyan-200 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 rounded"
+                                    >
+                                        Verificar de novo
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -858,6 +1055,7 @@ export default function MiningDashboard({
                                         />
                                     </div>
 
+                                    {!termMode && (<>
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                                             Arquivo
@@ -881,6 +1079,7 @@ export default function MiningDashboard({
                                             placeholder="xml"
                                         />
                                     </div>
+                                    </>)}
 
                                     <div>
                                         <label className="block text-xs font-semibold text-slate-300 mb-1.5">
@@ -959,6 +1158,7 @@ export default function MiningDashboard({
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-3 border-t border-slate-700/50">
+                            {!termMode && (
                             <div>
                                 <FieldLabel htmlFor="field-search-type" required>
                                     Tipo de Busca
@@ -980,6 +1180,7 @@ export default function MiningDashboard({
                                     <FieldError id="field-search-type-error">Selecione o tipo de busca.</FieldError>
                                 )}
                             </div>
+                            )}
 
                             <div>
                                 <FieldLabel htmlFor="field-max-repos" required>
@@ -1088,7 +1289,8 @@ export default function MiningDashboard({
                                     <Button
                                         type="submit"
                                         variant="cta"
-                                        disabled={loading}
+                                        disabled={loading || githubBlocked}
+                                        title={githubBlocked ? "Configure um GITHUB_TOKEN válido no servidor para buscar." : undefined}
                                         className="px-5"
                                     >
                                         {loading ? (
@@ -1248,7 +1450,7 @@ export default function MiningDashboard({
                                     variant="primary"
                                     onClick={handleResumeRun}
                                     disabled={loading}
-                                    title="A retomada usa o token configurado no servidor, pois o token digitado não é salvo."
+                                    title="A retomada usa o GITHUB_TOKEN configurado no servidor."
                                 >
                                     <Play className="h-4 w-4" />
                                     Retomar consulta

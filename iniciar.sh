@@ -46,9 +46,18 @@ if ! docker pull "${IMAGEM}" && ! docker image inspect "${IMAGEM}" >/dev/null 2>
   fi
 fi
 
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo
+  echo "AVISO: a variável de ambiente GITHUB_TOKEN não está definida neste computador."
+  echo "O Miner abre, mas não consegue buscar no GitHub até você defini-la."
+  echo "Para definir uma vez, adicione ao seu ~/.bashrc:  export GITHUB_TOKEN=\"seu_token\""
+  echo "Depois abra um terminal novo e execute este arquivo de novo."
+  echo
+fi
+
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 echo "Iniciando o Miner..."
-docker run -d --rm --name "${CONTAINER}" -p "${PORTA}:10000" -v miner-data:/app/data "${IMAGEM}" >/dev/null \
+docker run -d --rm --name "${CONTAINER}" --pids-limit 8192 -e GITHUB_TOKEN -p "${PORTA}:10000" -v miner-data:/app/data "${IMAGEM}" >/dev/null \
   || { echo "Não foi possível iniciar. Se a porta ${PORTA} estiver em uso, feche o programa que a usa." >&2; exit 1; }
 
 echo "Aguardando o servidor..."

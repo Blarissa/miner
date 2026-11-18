@@ -75,6 +75,9 @@ MINING_RUN_CANDIDATE_COLUMN_MIGRATIONS = {
 
 SEARCH_FILTER_COLUMN_MIGRATIONS = {
     "content_rules_json": "ALTER TABLE search_filters ADD COLUMN content_rules_json TEXT",
+    "file_size": "ALTER TABLE search_filters ADD COLUMN file_size TEXT",
+    "term_evidence": "ALTER TABLE search_filters ADD COLUMN term_evidence TEXT",
+    "term_text": "ALTER TABLE search_filters ADD COLUMN term_text TEXT",
 }
 
 

@@ -32,5 +32,8 @@ export function runStatusLabel(status?: string | null): string {
 
 export function progressStageLabel(stage?: string | null): string {
     if (!stage) return "";
+    // Etapa "searching:3/32" = consulta 3 de 32 ao GitHub (modo termo).
+    const searching = /^searching:(\d+)\/(\d+)$/.exec(stage);
+    if (searching) return `Consultando o GitHub (${searching[1]} de ${searching[2]})`;
     return PROGRESS_STAGE_LABELS[stage] ?? stage;
 }

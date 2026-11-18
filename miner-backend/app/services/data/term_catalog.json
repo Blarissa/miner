@@ -1,0 +1,882 @@
+{
+  "jdbc template": {
+    "aliases": [
+      "jdbctemplate",
+      "spring jdbc",
+      "jdbc"
+    ],
+    "classes": [
+      "JdbcTemplate",
+      "NamedParameterJdbcTemplate",
+      "SimpleJdbcInsert",
+      "JdbcClient"
+    ],
+    "imports": [
+      "org.springframework.jdbc.core.JdbcTemplate",
+      "org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate"
+    ],
+    "dependencies": [
+      "spring-jdbc",
+      "spring-boot-starter-jdbc"
+    ]
+  },
+  "jpa": {
+    "aliases": [
+      "java persistence api",
+      "jakarta persistence",
+      "spring data jpa"
+    ],
+    "classes": [
+      "EntityManager",
+      "JpaRepository",
+      "CrudRepository"
+    ],
+    "imports": [
+      "javax.persistence.Entity",
+      "jakarta.persistence.Entity",
+      "org.springframework.data.jpa.repository.JpaRepository"
+    ],
+    "dependencies": [
+      "spring-boot-starter-data-jpa",
+      "spring-data-jpa",
+      "jakarta.persistence-api",
+      "javax.persistence-api"
+    ]
+  },
+  "hibernate": {
+    "aliases": [
+      "hibernate orm"
+    ],
+    "classes": [
+      "SessionFactory",
+      "HibernateTemplate"
+    ],
+    "imports": [
+      "org.hibernate.Session",
+      "org.hibernate.SessionFactory"
+    ],
+    "dependencies": [
+      "hibernate-core"
+    ]
+  },
+  "spring data jdbc": {
+    "aliases": [],
+    "classes": [
+      "JdbcAggregateTemplate"
+    ],
+    "imports": [
+      "org.springframework.data.jdbc.core.JdbcAggregateTemplate"
+    ],
+    "dependencies": [
+      "spring-data-jdbc",
+      "spring-boot-starter-data-jdbc"
+    ]
+  },
+  "mybatis": {
+    "aliases": [
+      "ibatis"
+    ],
+    "classes": [
+      "SqlSessionFactory",
+      "SqlSessionTemplate",
+      "MapperScan"
+    ],
+    "imports": [
+      "org.apache.ibatis.session.SqlSession",
+      "org.mybatis.spring.annotation.MapperScan"
+    ],
+    "dependencies": [
+      "mybatis",
+      "mybatis-spring",
+      "mybatis-spring-boot-starter"
+    ]
+  },
+  "jooq": {
+    "aliases": [],
+    "classes": [
+      "DSLContext"
+    ],
+    "imports": [
+      "org.jooq.DSLContext"
+    ],
+    "dependencies": [
+      "jooq",
+      "spring-boot-starter-jooq"
+    ]
+  },
+  "flyway": {
+    "aliases": [],
+    "classes": [
+      "Flyway"
+    ],
+    "imports": [
+      "org.flywaydb.core.Flyway"
+    ],
+    "dependencies": [
+      "flyway-core"
+    ]
+  },
+  "liquibase": {
+    "aliases": [],
+    "classes": [
+      "Liquibase"
+    ],
+    "imports": [
+      "liquibase.Liquibase"
+    ],
+    "dependencies": [
+      "liquibase-core"
+    ]
+  },
+  "hikaricp": {
+    "aliases": [
+      "hikari"
+    ],
+    "classes": [
+      "HikariDataSource",
+      "HikariConfig"
+    ],
+    "imports": [
+      "com.zaxxer.hikari.HikariDataSource"
+    ],
+    "dependencies": [
+      "HikariCP"
+    ]
+  },
+  "h2": {
+    "aliases": [
+      "h2 database"
+    ],
+    "classes": [],
+    "imports": [
+      "org.h2.Driver",
+      "org.h2.jdbcx.JdbcDataSource"
+    ],
+    "dependencies": [
+      "h2"
+    ]
+  },
+  "mongodb": {
+    "aliases": [
+      "mongo"
+    ],
+    "classes": [
+      "MongoTemplate",
+      "MongoRepository"
+    ],
+    "imports": [
+      "org.springframework.data.mongodb.core.MongoTemplate",
+      "com.mongodb.client.MongoClient"
+    ],
+    "dependencies": [
+      "spring-data-mongodb",
+      "mongodb-driver-sync",
+      "spring-boot-starter-data-mongodb"
+    ]
+  },
+  "redis": {
+    "aliases": [],
+    "classes": [
+      "RedisTemplate",
+      "Jedis",
+      "LettuceConnectionFactory"
+    ],
+    "imports": [
+      "redis.clients.jedis.Jedis",
+      "org.springframework.data.redis.core.RedisTemplate"
+    ],
+    "dependencies": [
+      "jedis",
+      "lettuce-core",
+      "spring-boot-starter-data-redis"
+    ]
+  },
+  "elasticsearch": {
+    "aliases": [],
+    "classes": [
+      "RestHighLevelClient",
+      "ElasticsearchRestTemplate"
+    ],
+    "imports": [
+      "org.elasticsearch.client.RestHighLevelClient",
+      "org.springframework.data.elasticsearch.core.ElasticsearchOperations"
+    ],
+    "dependencies": [
+      "elasticsearch-rest-high-level-client",
+      "spring-data-elasticsearch",
+      "spring-boot-starter-data-elasticsearch"
+    ]
+  },
+  "caffeine": {
+    "aliases": [
+      "caffeine cache"
+    ],
+    "classes": [
+      "Caffeine"
+    ],
+    "imports": [
+      "com.github.benmanes.caffeine.cache.Caffeine"
+    ],
+    "dependencies": [
+      "caffeine"
+    ]
+  },
+  "spring boot": {
+    "aliases": [
+      "springboot"
+    ],
+    "classes": [
+      "SpringApplication",
+      "SpringBootApplication"
+    ],
+    "imports": [
+      "org.springframework.boot.SpringApplication",
+      "org.springframework.boot.autoconfigure.SpringBootApplication"
+    ],
+    "dependencies": [
+      "spring-boot-starter",
+      "spring-boot-starter-web"
+    ]
+  },
+  "spring mvc": {
+    "aliases": [
+      "spring web",
+      "springmvc"
+    ],
+    "classes": [
+      "RestController",
+      "RequestMapping"
+    ],
+    "imports": [
+      "org.springframework.web.bind.annotation.RestController",
+      "org.springframework.stereotype.Controller"
+    ],
+    "dependencies": [
+      "spring-webmvc",
+      "spring-boot-starter-web"
+    ]
+  },
+  "spring webflux": {
+    "aliases": [
+      "webflux",
+      "reactor",
+      "project reactor"
+    ],
+    "classes": [
+      "WebClient",
+      "Mono",
+      "Flux"
+    ],
+    "imports": [
+      "org.springframework.web.reactive.function.client.WebClient",
+      "reactor.core.publisher.Mono"
+    ],
+    "dependencies": [
+      "spring-webflux",
+      "spring-boot-starter-webflux",
+      "reactor-core"
+    ]
+  },
+  "rest template": {
+    "aliases": [
+      "resttemplate"
+    ],
+    "classes": [
+      "RestTemplate"
+    ],
+    "imports": [
+      "org.springframework.web.client.RestTemplate"
+    ],
+    "dependencies": [
+      "spring-web"
+    ]
+  },
+  "spring security": {
+    "aliases": [],
+    "classes": [
+      "SecurityFilterChain",
+      "WebSecurityConfigurerAdapter"
+    ],
+    "imports": [
+      "org.springframework.security.config.annotation.web.builders.HttpSecurity"
+    ],
+    "dependencies": [
+      "spring-security-web",
+      "spring-boot-starter-security",
+      "spring-security-config"
+    ]
+  },
+  "spring batch": {
+    "aliases": [
+      "springbatch"
+    ],
+    "classes": [
+      "JobBuilderFactory",
+      "StepBuilderFactory"
+    ],
+    "imports": [
+      "org.springframework.batch.core.Job"
+    ],
+    "dependencies": [
+      "spring-batch-core",
+      "spring-boot-starter-batch"
+    ]
+  },
+  "openfeign": {
+    "aliases": [
+      "feign"
+    ],
+    "classes": [
+      "FeignClient"
+    ],
+    "imports": [
+      "org.springframework.cloud.openfeign.FeignClient",
+      "feign.Feign"
+    ],
+    "dependencies": [
+      "spring-cloud-starter-openfeign",
+      "feign-core"
+    ]
+  },
+  "hystrix": {
+    "aliases": [],
+    "classes": [
+      "HystrixCommand"
+    ],
+    "imports": [
+      "com.netflix.hystrix.HystrixCommand"
+    ],
+    "dependencies": [
+      "hystrix-core",
+      "spring-cloud-starter-netflix-hystrix"
+    ]
+  },
+  "resilience4j": {
+    "aliases": [
+      "circuit breaker"
+    ],
+    "classes": [
+      "CircuitBreaker",
+      "RateLimiter"
+    ],
+    "imports": [
+      "io.github.resilience4j.circuitbreaker.CircuitBreaker"
+    ],
+    "dependencies": [
+      "resilience4j-circuitbreaker",
+      "resilience4j-spring-boot2",
+      "resilience4j-spring-boot3"
+    ]
+  },
+  "validation": {
+    "aliases": [
+      "bean validation"
+    ],
+    "classes": [
+      "NotNull",
+      "Valid"
+    ],
+    "imports": [
+      "javax.validation.constraints.NotNull",
+      "jakarta.validation.constraints.NotNull"
+    ],
+    "dependencies": [
+      "validation-api",
+      "jakarta.validation-api",
+      "hibernate-validator",
+      "spring-boot-starter-validation"
+    ]
+  },
+  "openapi": {
+    "aliases": [
+      "swagger",
+      "springdoc",
+      "springfox"
+    ],
+    "classes": [
+      "Operation",
+      "ApiOperation"
+    ],
+    "imports": [
+      "io.swagger.v3.oas.annotations.Operation",
+      "io.swagger.annotations.ApiOperation"
+    ],
+    "dependencies": [
+      "springdoc-openapi-ui",
+      "springdoc-openapi-starter-webmvc-ui",
+      "springfox-swagger2",
+      "swagger-annotations"
+    ]
+  },
+  "jax-rs": {
+    "aliases": [
+      "jaxrs",
+      "jersey",
+      "rest easy"
+    ],
+    "classes": [
+      "ClientBuilder"
+    ],
+    "imports": [
+      "javax.ws.rs.Path",
+      "jakarta.ws.rs.Path",
+      "org.glassfish.jersey.server.ResourceConfig"
+    ],
+    "dependencies": [
+      "jersey-server",
+      "javax.ws.rs-api",
+      "jakarta.ws.rs-api"
+    ]
+  },
+  "ejb": {
+    "aliases": [
+      "java ee",
+      "jakarta ee"
+    ],
+    "classes": [],
+    "imports": [
+      "javax.ejb.Stateless",
+      "jakarta.ejb.Stateless"
+    ],
+    "dependencies": [
+      "javaee-api",
+      "jakarta.jakartaee-api"
+    ]
+  },
+  "jaxb": {
+    "aliases": [],
+    "classes": [
+      "JAXBContext"
+    ],
+    "imports": [
+      "javax.xml.bind.JAXBContext",
+      "jakarta.xml.bind.JAXBContext"
+    ],
+    "dependencies": [
+      "jaxb-api",
+      "jakarta.xml.bind-api",
+      "jaxb-runtime"
+    ]
+  },
+  "kafka": {
+    "aliases": [],
+    "classes": [
+      "KafkaProducer",
+      "KafkaTemplate",
+      "KafkaListener"
+    ],
+    "imports": [
+      "org.apache.kafka.clients.producer.KafkaProducer",
+      "org.springframework.kafka.core.KafkaTemplate"
+    ],
+    "dependencies": [
+      "kafka-clients",
+      "spring-kafka"
+    ]
+  },
+  "rabbitmq": {
+    "aliases": [
+      "rabbit",
+      "amqp"
+    ],
+    "classes": [
+      "RabbitTemplate",
+      "RabbitListener"
+    ],
+    "imports": [
+      "org.springframework.amqp.rabbit.core.RabbitTemplate",
+      "com.rabbitmq.client.ConnectionFactory"
+    ],
+    "dependencies": [
+      "amqp-client",
+      "spring-rabbit",
+      "spring-boot-starter-amqp"
+    ]
+  },
+  "quartz": {
+    "aliases": [],
+    "classes": [
+      "Scheduler",
+      "JobDetail"
+    ],
+    "imports": [
+      "org.quartz.Scheduler"
+    ],
+    "dependencies": [
+      "quartz",
+      "spring-boot-starter-quartz"
+    ]
+  },
+  "rxjava": {
+    "aliases": [
+      "rx java"
+    ],
+    "classes": [
+      "Observable",
+      "Flowable"
+    ],
+    "imports": [
+      "io.reactivex.Observable",
+      "io.reactivex.rxjava3.core.Observable"
+    ],
+    "dependencies": [
+      "rxjava"
+    ]
+  },
+  "junit 4": {
+    "aliases": [
+      "junit4"
+    ],
+    "classes": [
+      "RunWith"
+    ],
+    "imports": [
+      "org.junit.Test",
+      "org.junit.Assert",
+      "org.junit.runner.RunWith"
+    ],
+    "dependencies": [
+      "junit"
+    ]
+  },
+  "junit 5": {
+    "aliases": [
+      "junit5",
+      "jupiter"
+    ],
+    "classes": [
+      "ExtendWith"
+    ],
+    "imports": [
+      "org.junit.jupiter.api.Test",
+      "org.junit.jupiter.api.extension.ExtendWith"
+    ],
+    "dependencies": [
+      "junit-jupiter",
+      "junit-jupiter-api",
+      "junit-jupiter-engine"
+    ]
+  },
+  "junit": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "org.junit.Test",
+      "org.junit.jupiter.api.Test"
+    ],
+    "dependencies": [
+      "junit",
+      "junit-jupiter",
+      "junit-jupiter-api"
+    ]
+  },
+  "testng": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "org.testng.annotations.Test",
+      "org.testng.Assert"
+    ],
+    "dependencies": [
+      "testng"
+    ]
+  },
+  "mockito": {
+    "aliases": [],
+    "classes": [
+      "Mockito",
+      "MockitoJUnitRunner",
+      "MockitoExtension"
+    ],
+    "imports": [
+      "org.mockito.Mockito",
+      "org.mockito.Mock",
+      "org.mockito.junit.jupiter.MockitoExtension"
+    ],
+    "dependencies": [
+      "mockito-core",
+      "mockito-inline",
+      "mockito-junit-jupiter",
+      "mockito-all"
+    ]
+  },
+  "powermock": {
+    "aliases": [],
+    "classes": [
+      "PowerMockito",
+      "PowerMockRunner"
+    ],
+    "imports": [
+      "org.powermock.api.mockito.PowerMockito"
+    ],
+    "dependencies": [
+      "powermock-api-mockito2",
+      "powermock-module-junit4",
+      "powermock-core"
+    ]
+  },
+  "easymock": {
+    "aliases": [],
+    "classes": [
+      "EasyMock"
+    ],
+    "imports": [
+      "org.easymock.EasyMock"
+    ],
+    "dependencies": [
+      "easymock"
+    ]
+  },
+  "wiremock": {
+    "aliases": [],
+    "classes": [
+      "WireMockServer",
+      "WireMockRule"
+    ],
+    "imports": [
+      "com.github.tomakehurst.wiremock.WireMockServer"
+    ],
+    "dependencies": [
+      "wiremock",
+      "wiremock-jre8",
+      "wiremock-standalone"
+    ]
+  },
+  "assertj": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "org.assertj.core.api.Assertions"
+    ],
+    "dependencies": [
+      "assertj-core"
+    ]
+  },
+  "hamcrest": {
+    "aliases": [],
+    "classes": [
+      "MatcherAssert"
+    ],
+    "imports": [
+      "org.hamcrest.MatcherAssert",
+      "org.hamcrest.Matchers"
+    ],
+    "dependencies": [
+      "hamcrest",
+      "hamcrest-core",
+      "hamcrest-all"
+    ]
+  },
+  "testcontainers": {
+    "aliases": [],
+    "classes": [
+      "GenericContainer",
+      "PostgreSQLContainer"
+    ],
+    "imports": [
+      "org.testcontainers.containers.GenericContainer"
+    ],
+    "dependencies": [
+      "testcontainers"
+    ]
+  },
+  "selenium": {
+    "aliases": [],
+    "classes": [
+      "WebDriver",
+      "ChromeDriver"
+    ],
+    "imports": [
+      "org.openqa.selenium.WebDriver"
+    ],
+    "dependencies": [
+      "selenium-java",
+      "selenium-api"
+    ]
+  },
+  "rest assured": {
+    "aliases": [
+      "restassured"
+    ],
+    "classes": [
+      "RestAssured"
+    ],
+    "imports": [
+      "io.restassured.RestAssured"
+    ],
+    "dependencies": [
+      "rest-assured"
+    ]
+  },
+  "cucumber": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "io.cucumber.java.en.Given",
+      "cucumber.api.java.en.Given"
+    ],
+    "dependencies": [
+      "cucumber-java",
+      "cucumber-junit"
+    ]
+  },
+  "lombok": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "lombok.Data",
+      "lombok.Getter",
+      "lombok.Builder"
+    ],
+    "dependencies": [
+      "lombok"
+    ]
+  },
+  "mapstruct": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "org.mapstruct.Mapper"
+    ],
+    "dependencies": [
+      "mapstruct",
+      "mapstruct-processor"
+    ]
+  },
+  "jackson": {
+    "aliases": [
+      "objectmapper"
+    ],
+    "classes": [
+      "ObjectMapper"
+    ],
+    "imports": [
+      "com.fasterxml.jackson.databind.ObjectMapper"
+    ],
+    "dependencies": [
+      "jackson-databind"
+    ]
+  },
+  "gson": {
+    "aliases": [],
+    "classes": [
+      "Gson"
+    ],
+    "imports": [
+      "com.google.gson.Gson"
+    ],
+    "dependencies": [
+      "gson"
+    ]
+  },
+  "log4j": {
+    "aliases": [],
+    "classes": [
+      "Log4jLogger"
+    ],
+    "imports": [
+      "org.apache.logging.log4j.Logger",
+      "org.apache.log4j.Logger"
+    ],
+    "dependencies": [
+      "log4j-core",
+      "log4j-api",
+      "log4j"
+    ]
+  },
+  "slf4j": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "org.slf4j.Logger",
+      "org.slf4j.LoggerFactory"
+    ],
+    "dependencies": [
+      "slf4j-api"
+    ]
+  },
+  "logback": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "ch.qos.logback.classic.Logger"
+    ],
+    "dependencies": [
+      "logback-classic"
+    ]
+  },
+  "guava": {
+    "aliases": [],
+    "classes": [],
+    "imports": [
+      "com.google.common.collect.ImmutableList",
+      "com.google.common.base.Preconditions"
+    ],
+    "dependencies": [
+      "guava"
+    ]
+  },
+  "apache commons lang": {
+    "aliases": [
+      "commons lang",
+      "commons-lang"
+    ],
+    "classes": [
+      "StringUtils"
+    ],
+    "imports": [
+      "org.apache.commons.lang3.StringUtils"
+    ],
+    "dependencies": [
+      "commons-lang3"
+    ]
+  },
+  "okhttp": {
+    "aliases": [],
+    "classes": [
+      "OkHttpClient"
+    ],
+    "imports": [
+      "okhttp3.OkHttpClient"
+    ],
+    "dependencies": [
+      "okhttp"
+    ]
+  },
+  "apache httpclient": {
+    "aliases": [
+      "httpclient",
+      "http client"
+    ],
+    "classes": [
+      "HttpClients",
+      "CloseableHttpClient"
+    ],
+    "imports": [
+      "org.apache.http.impl.client.HttpClients",
+      "org.apache.hc.client5.http.impl.classic.HttpClients"
+    ],
+    "dependencies": [
+      "httpclient",
+      "httpclient5"
+    ]
+  },
+  "jwt": {
+    "aliases": [
+      "jjwt",
+      "json web token"
+    ],
+    "classes": [
+      "Jwts"
+    ],
+    "imports": [
+      "io.jsonwebtoken.Jwts",
+      "com.auth0.jwt.JWT"
+    ],
+    "dependencies": [
+      "jjwt",
+      "jjwt-api",
+      "java-jwt"
+    ]
+  }
+}

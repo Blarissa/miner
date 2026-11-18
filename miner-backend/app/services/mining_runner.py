@@ -178,6 +178,25 @@ def log_search_filters(run_id: int, filters: list[GitHubSearchFilter]) -> None:
         )
 
 
+def search_progress_reporter(run_id: int, cursor: "MiningCursor"):
+    """Devolve o callback que mostra o andamento das consultas ao GitHub.
+
+    No modo termo cada pagina percorre dezenas de consultas lentas antes de
+    entregar candidatos; sem isso o contador de processados fica parado.
+    """
+
+    def report(done: int, total: int, found: int) -> bool:
+        log.info("Run #%s | consulta %s/%s concluida | candidatos novos nesta pagina=%s", run_id, done, total, found)
+        update_mining_run_progress(
+            run_id,
+            progress_stage=f"searching:{done}/{total}",
+            total_candidates=cursor.total_seen_with_page(found),
+        )
+        return is_mining_run_cancelled(run_id)
+
+    return report
+
+
 def is_run_cancelled(run_id: int, message: str) -> bool:
     if not is_mining_run_cancelled(run_id):
         return False
@@ -335,7 +354,6 @@ def analyzed_candidate_record(
 
 def payload_from_saved_run(run: dict[str, Any], filters: list[Any]) -> SearchRepositoriesRequest:
     return SearchRepositoriesRequest(
-        github_token=None,
         max_repos=int(run["max_repos"]),
         max_workers=int(run["max_workers"]),
         analyzer_workers=int(run["analyzer_workers"]),
@@ -397,6 +415,7 @@ def execute_mining_run(
                     token=token, filters=filters, page=cursor.page_cursor,
                     per_page=cursor.per_page, delay=payload.delay,
                     seen_keys=cursor.seen_candidate_keys, session=session,
+                    on_filter_done=search_progress_reporter(run_id, cursor),
                 )
                 update_mining_run_progress(run_id, progress_stage="mined", total_candidates=cursor.total_seen_with_page(len(mining_page.candidates)))
                 if not mining_page.candidates:
@@ -589,6 +608,7 @@ def execute_mining_run(
                     delay=payload.delay,
                     seen_keys=cursor.seen_candidate_keys,
                     session=session,
+                    on_filter_done=search_progress_reporter(run_id, cursor),
                 )
                 update_mining_run_progress(
                     run_id,
@@ -686,7 +706,7 @@ def execute_mining_run(
             if is_run_cancelled(run_id, "cancelada antes de buscar nova pagina."):
                 return
             update_mining_run_progress(run_id, progress_stage="mining")
-            mining_page = fetch_mining_page(token=token, filters=filters, page=cursor.page_cursor, per_page=cursor.per_page, delay=payload.delay, seen_keys=cursor.seen_candidate_keys, session=session)
+            mining_page = fetch_mining_page(token=token, filters=filters, page=cursor.page_cursor, per_page=cursor.per_page, delay=payload.delay, seen_keys=cursor.seen_candidate_keys, session=session, on_filter_done=search_progress_reporter(run_id, cursor))
             update_mining_run_progress(run_id, progress_stage="mined", total_candidates=cursor.total_seen_with_page(len(mining_page.candidates)))
             if not mining_page.candidates:
                 if mining_page.has_next_page:

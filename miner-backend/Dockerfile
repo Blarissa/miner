@@ -111,7 +111,7 @@ ENV PATH="/opt/jdks/17/bin:${PATH}"
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bash curl unzip zip git maven ca-certificates \
+    bash curl unzip zip git maven ca-certificates sudo \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=jdk6 /jdk /opt/jdks/6
@@ -142,9 +142,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY miner-backend/ .
 COPY --from=front-build /front/dist /app/static
 
+# Sandbox: git e Maven rodam dos repositórios minerados (código de terceiros) como o usuário
+# "sandbox", que não lê o banco (/app/data, só do appuser) nem o ambiente/memória do servidor,
+# onde fica o token. O appuser só pode virar "sandbox" (nunca root) via sudo.
 RUN mkdir -p /app/data app/services/repos app/services/logs \
     && useradd --create-home --shell /bin/bash appuser \
-    && chown -R appuser:appuser /app
+    && useradd --create-home --shell /usr/sbin/nologin sandbox \
+    && chown -R appuser:appuser /app \
+    && chown sandbox:sandbox /app/app/services/repos \
+    && chmod 700 /app/data \
+    && echo 'appuser ALL=(sandbox) NOPASSWD: ALL' > /etc/sudoers.d/miner-sandbox \
+    && chmod 440 /etc/sudoers.d/miner-sandbox \
+    && visudo -cf /etc/sudoers.d/miner-sandbox
+
+ENV MINER_SANDBOX_USER=sandbox
 
 # USER appuser  # antes: rodava direto como appuser; agora o entrypoint ajusta /app/data e troca para appuser
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh && chmod +x /app/docker-entrypoint.sh

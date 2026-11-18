@@ -971,7 +971,7 @@ class PipelineControlsTest(unittest.TestCase):
                 built_filters = build_search_filters(payload.model_dump())
                 run_id = create_mining_run(payload, status="running")
 
-                def fake_fetch_mining_page(*, token, filters, page, per_page, delay, seen_keys, session=None):
+                def fake_fetch_mining_page(*, token, filters, page, per_page, delay, seen_keys, session=None, on_filter_done=None):
                     # Simula paginas pequenas da API do GitHub (3 itens por
                     # pagina), que exigem mais de uma chamada para atingir
                     # max_repos=7.

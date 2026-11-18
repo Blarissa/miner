@@ -415,9 +415,12 @@ def save_search_filters(
                     filename,
                     extension,
                     path_filter,
-                    content_rules_json
+                    content_rules_json,
+                    file_size,
+                    term_evidence,
+                    term_text
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     run_id,
@@ -449,6 +452,9 @@ def save_search_filters(
                     raw_filter.extension,
                     raw_filter.path,
                     json_text([rule.model_dump() for rule in raw_filter.content_rules]),
+                    raw_filter.file_size,
+                    raw_filter.term_evidence,
+                    raw_filter.term_text,
                 ),
             )
             lastrowid = cursor.lastrowid
@@ -492,7 +498,10 @@ def get_search_filters_for_run(run_id: int) -> list[GitHubSearchFilterRequest]:
                 filename,
                 extension,
                 path_filter,
-                content_rules_json
+                content_rules_json,
+                file_size,
+                term_evidence,
+                term_text
             FROM search_filters
             WHERE mining_run_id = ?
             ORDER BY id
@@ -537,6 +546,9 @@ def get_search_filters_for_run(run_id: int) -> list[GitHubSearchFilterRequest]:
                 extension=row["extension"],
                 path=row["path_filter"],
                 content_rules=json_value(row["content_rules_json"], []),
+                file_size=row["file_size"],
+                term_evidence=row["term_evidence"],
+                term_text=row["term_text"],
             )
         )
 

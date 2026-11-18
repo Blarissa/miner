@@ -37,6 +37,10 @@ class GitHubSearchFilter:
     stars: str | None = None
     forks: str | None = None
 
+    # Modo por termo: evidência que o arquivo encontrado precisa mostrar (triagem pela API).
+    term_evidence: str | None = None
+    term_text: str | None = None
+
 
 @dataclass
 class ContentRule:
@@ -106,6 +110,7 @@ def build_search_query(data: dict[str, Any]) -> str:
         "help_wanted_issues": "help-wanted-issues",
     }
     code_qualifier_fields = {
+        "file_size": "size",
         "filename": "filename",
         "extension": "extension",
         "path": "path",
@@ -138,6 +143,8 @@ def filter_from_dict(data: dict[str, Any]) -> GitHubSearchFilter:
         language=data.get("language"),
         stars=data.get("stars"),
         forks=data.get("forks"),
+        term_evidence=data.get("term_evidence"),
+        term_text=data.get("term_text"),
         content_rules=[
             ContentRule(
                 field_name=rule["field_name"],

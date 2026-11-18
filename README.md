@@ -50,8 +50,23 @@ Detalhes:
 - A imagem fica publicada no Docker Hub: [`blarissa/miner`](https://hub.docker.com/r/blarissa/miner). Você não precisa de conta nem de login para baixá-la. Cada vez que o script abre, ele verifica se há versão nova.
 - Se você clonou o repositório e estiver sem internet, o script constrói a imagem a partir dos arquivos locais (leva uns 20 minutos).
 - Se fechar a janela sem apertar uma tecla, o Miner continua rodando; encerre com `docker stop miner-backend-run` (ou com o `parar.bat`, se você clonou o repositório).
-- Você precisa de um token do GitHub (campo no formulário) para buscas por código.
+- Você precisa de um token do GitHub na variável de ambiente `GITHUB_TOKEN` para buscar por código. Defina uma vez no PowerShell com `setx GITHUB_TOKEN "seu_token"`, feche e abra o `iniciar.bat` de novo. O token não é digitado na tela, e a tela mostra se ele foi encontrado.
 - A API tem documentação em <http://localhost:8000/api/docs> e a documentação do projeto em <http://localhost:8000/docs>.
+
+## Segurança Dos Repositórios Analisados
+
+O Miner não executa código de terceiros com as permissões do servidor. O `git clone` e o Maven rodam dentro do contêiner como um usuário separado (`sandbox`), que não lê o banco de dados, não vê o token do GitHub (nem na memória, nem no ambiente) e não ganha privilégios. A triagem do termo usa só a API do GitHub e não baixa nada. Seus arquivos do computador não ficam expostos, porque só o volume `miner-data` é montado.
+
+Para conferir o isolamento depois de iniciar o Miner:
+
+```powershell
+docker exec miner-backend-run python -m app.services.sandbox
+curl http://localhost:8000/health/sandbox
+```
+
+Por padrão, se o isolamento não funcionar, o Miner segue sem ele e avisa no log. Para recusar a análise nesse caso, inicie o contêiner com `-e MINER_SANDBOX=required`.
+
+Limite conhecido: a rede do contêiner continua aberta, porque o Maven precisa baixar dependências. Por isso, analise apenas repositórios públicos e não coloque dados sensíveis no volume `miner-data`.
 
 ## Estrutura Do Repositório
 
@@ -87,6 +102,22 @@ Na imagem Docker o front já vem compilado e é servido pelo próprio backend, n
 
 Observação: o Maven 3.9 exige Java 8 ou superior, então repositórios que declaram Java 6 ou 7 só são analisados com a opção de permitir atualização do JDK.
 
+## Como Executar O Backend
+
+Há dois modos. Use o primeiro no dia a dia e o segundo para validar o que os usuários vão receber.
+
+| Modo | Quando usar | Roda o código mais recente | Sandbox de segurança |
+| --- | --- | --- | --- |
+| Direto no computador (desenvolvimento) | Ver a tela e a busca funcionando enquanto você altera o código | Sim | Não |
+| Docker | Validar a imagem, o sandbox e o que o usuário final usa | Só depois de reconstruir a imagem | Sim |
+
+Regras que valem para os dois:
+
+- **O token do GitHub vem sempre da variável `GITHUB_TOKEN`.** Não existe campo de token na tela. Sem a variável, o Miner abre, mas não busca. Confira em `/health/github` ou no painel "Acesso ao GitHub".
+- **Não use o `iniciar.bat` (nem o `iniciar.sh`) para testar código novo.** Eles baixam a imagem publicada no Docker Hub e a colocam no lugar da imagem que você construiu. Para testar código novo, use um dos dois modos abaixo.
+- **Para testar a imagem construída, use outro nome, outra porta e outro volume**, como no exemplo do modo Docker, para não mexer no seu Miner nem nos seus dados.
+- **Fora do Docker o sandbox não existe:** o Maven roda com as permissões do seu usuário. Por isso, analise com o modo direto só repositórios que você confia, e use o modo Docker para o restante.
+
 ## Executando Sem Docker (desenvolvimento)
 
 Requisitos: Python 3.13, Node.js e npm, Git, Maven e um ou mais JDKs.
@@ -109,9 +140,20 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+Defina o token antes de subir, de um destes jeitos:
+
+```powershell
+# só nesta janela do PowerShell
+$env:GITHUB_TOKEN="seu_token"
+
+# ou, de forma permanente, uma linha no miner-backend/.env (o arquivo não vai para o Git)
+# GITHUB_TOKEN=seu_token
+```
+
 - API: <http://127.0.0.1:8000>
 - Swagger: <http://127.0.0.1:8000/api/docs>
 - Health check: <http://127.0.0.1:8000/health>
+- Token do GitHub encontrado e válido: <http://127.0.0.1:8000/health/github>
 
 ### Frontend (modo desenvolvimento)
 
@@ -134,8 +176,23 @@ Acesse <http://localhost:5173>. Para o backend aceitar essa origem, deixe `CORS_
 Execute na **raiz** do projeto (o contexto inclui o front):
 
 ```powershell
-docker build -f miner-backend/Dockerfile -t miner-backend .
-docker run -d --rm --name miner-backend-run -p 8000:10000 -v miner-data:/app/data miner-backend
+docker build -f miner-backend/Dockerfile -t miner-teste .
+$env:GITHUB_TOKEN="seu_token"
+docker run -d --rm --name miner-teste --pids-limit 8192 -e GITHUB_TOKEN -p 8001:10000 -v miner-teste-data:/app/data miner-teste
+```
+
+Abra <http://localhost:8001>. O `-e GITHUB_TOKEN` só repassa a variável se ela estiver definida na janela do PowerShell. Para conferir o sandbox:
+
+```powershell
+docker exec miner-teste python -m app.services.sandbox
+```
+
+Para apagar o teste:
+
+```powershell
+docker stop miner-teste
+docker volume rm miner-teste-data
+docker rmi miner-teste
 ```
 
 Para publicar a imagem no Docker Hub (mantenedora):
@@ -153,7 +210,7 @@ O primeiro build leva cerca de 20 minutos por causa dos 21 JDKs. Abra <http://lo
 1. Suba o Miner (`iniciar.bat`) e abra <http://localhost:8000>.
 2. Clique em `Nova busca`.
 3. Informe uma ou mais queries do GitHub.
-4. Informe o token do GitHub no formulário quando a busca exigir autenticação.
+4. Confira no painel "Acesso ao GitHub" que o `GITHUB_TOKEN` foi encontrado (ele vem do ambiente, não é digitado).
 5. Configure filtros e opções de análise.
 6. Inicie a mineração.
 7. Acompanhe o progresso, os resultados parciais e as estatísticas.

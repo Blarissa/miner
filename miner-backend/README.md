@@ -42,7 +42,7 @@ requirements.txt
 - Git instalado e disponível no `PATH`.
 - Maven instalado e disponível no `PATH`, ou wrapper `mvnw` nos repositórios analisados.
 - JDK instalado para análise local. O Dockerfile já instala várias versões via SDKMAN.
-- Token do GitHub. A busca de código do GitHub exige autenticação.
+- Token do GitHub na variável de ambiente `GITHUB_TOKEN` (ou no `.env`). A busca de código do GitHub exige autenticação, e a API de busca não aceita token na requisição: ele vem só do servidor. `GET /health/github` mostra se ele foi encontrado e se é válido, sem devolvê-lo.
 
 ## Configuração Do `.env`
 

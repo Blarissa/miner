@@ -104,25 +104,25 @@ const FIELDS: FieldDoc[] = [
         ),
     },
     {
-        label: "GitHub Token",
+        label: "GitHub Token (variável GITHUB_TOKEN)",
         group: "Campos principais",
         appliesTo: "platform",
         description: (
             <>
                 Token de acesso pessoal do GitHub (<Code>ghp_…</Code> ou{" "}
-                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. É obrigatório no
-                formulário. O token é usado apenas durante a execução da busca:{" "}
-                <strong>ele não é gravado no banco de dados</strong> e não aparece nos resultados nem no
-                histórico das execuções. (Chamando a API diretamente, se o token for omitido o backend usa o
-                token configurado no servidor.)
+                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. Ele{" "}
+                <strong>não é digitado na tela</strong>: o Miner lê a variável de ambiente{" "}
+                <Code>GITHUB_TOKEN</Code> do computador onde roda. O painel “Acesso ao GitHub” mostra se o
+                token foi encontrado e se o GitHub o aceita. O token nunca vai para o navegador, para o
+                banco de dados, para os resultados nem para o código dos repositórios analisados.
             </>
         ),
         tip: (
             <>
                 A busca de código do GitHub <strong>exige autenticação</strong>. Para repositórios
                 públicos basta um token sem permissões extras (GitHub → Settings → Developer
-                settings → Personal access tokens). Sem token, o limite da API de busca cai para 10
-                requisições por minuto.
+                settings → Personal access tokens). No Windows, defina uma vez com{" "}
+                <Code>setx GITHUB_TOKEN "seu_token"</Code> e abra o <Code>iniciar.bat</Code> de novo.
             </>
         ),
     },
@@ -879,7 +879,7 @@ export default function DocumentationPage() {
                         <p className="font-semibold text-slate-100">Sua primeira busca, em 4 passos:</p>
                         <ol className="list-decimal space-y-1 pl-5">
                             <li>No Início, clique em <strong>Nova busca</strong>.</li>
-                            <li>Mantenha a query <Code>mockito</Code> e o tipo <strong>Code Search</strong>; informe seu token do GitHub.</li>
+                            <li>Mantenha a query <Code>mockito</Code> e o tipo <strong>Code Search</strong>; confira no painel “Acesso ao GitHub” se o GITHUB_TOKEN foi encontrado.</li>
                             <li>Deixe o limite em 5 ou 10 repositórios para um teste rápido.</li>
                             <li>Clique em <strong>Iniciar Mineração</strong> e acompanhe a tabela sendo preenchida.</li>
                         </ol>
@@ -980,7 +980,7 @@ export default function DocumentationPage() {
                                 },
                                 {
                                     key: <Badge>Plataforma (os dois tipos)</Badge>,
-                                    value: "Versão Java, token, limite de repositórios e opções de execução são da plataforma e valem para os dois tipos.",
+                                    value: "Versão Java, limite de repositórios e opções de execução são da plataforma e valem para os dois tipos.",
                                 },
                             ]}
                         />
@@ -1171,7 +1171,7 @@ export default function DocumentationPage() {
                                 { key: <strong>Cancelar</strong>, value: "Interrompe uma execução que está na fila ou em execução. O que já foi aceito fica salvo." },
                                 {
                                     key: <strong>Retomar consulta</strong>,
-                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos. Como o token digitado não é guardado, a retomada usa o token configurado no servidor (GITHUB_TOKEN no backend); se ele não estiver configurado, a retomada é recusada.",
+                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos. A retomada usa o GITHUB_TOKEN configurado no servidor; se ele não estiver configurado, a retomada é recusada.",
                                 },
                                 { key: <strong>Ver estatísticas</strong>, value: "Abre a tela Estatísticas (habilitado quando há estatísticas)." },
                             ]}
@@ -1326,7 +1326,7 @@ export default function DocumentationPage() {
                             },
                             {
                                 q: "Aparece “Falhou” logo no começo.",
-                                a: "Normalmente é token ausente/inválido ou limite da API do GitHub atingido. Confira o token e aguarde um minuto antes de retomar.",
+                                a: "Normalmente é token ausente/inválido ou limite da API do GitHub atingido. Confira o painel “Acesso ao GitHub” (GITHUB_TOKEN) e aguarde um minuto antes de retomar.",
                             },
                             {
                                 q: "Muitos repositórios eliminados em jdk_resolution.",

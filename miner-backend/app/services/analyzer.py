@@ -16,6 +16,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+from app.services import sandbox
 from app.services.persistence_policy import filter_persistable_repositories
 
 try:
@@ -648,6 +649,18 @@ def run(
     deadline: float | None = None,
 ) -> tuple[bool, str]:
     effective_timeout = remaining_timeout(deadline, timeout)
+    popen_env = sandbox.prepare_env(env)
+    sandboxed = False
+    try:
+        if sandbox.is_active():
+            # Código de terceiros: roda como outro usuário, sem segredos e sem privilégios.
+            # O limite interno é um pouco menor que o nosso: o servidor não consegue encerrar
+            # processos de outro usuário, então é o próprio sandbox que corta o comando.
+            command = sandbox.wrap_command(command, env, max(effective_timeout - 2, 1))
+            popen_env = sandbox.launcher_env()
+            sandboxed = True
+    except sandbox.SandboxUnavailable as exc:
+        return False, str(exc)
     output_tail: deque[str] = deque()
     output_size = 0
     output_lock = threading.Lock()
@@ -669,7 +682,7 @@ def run(
         proc = subprocess.Popen(
             command,
             cwd=cwd,
-            env=env,
+            env=popen_env,
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
@@ -688,13 +701,18 @@ def run(
 
         while proc.poll() is None:
             if time.monotonic() - started_at > effective_timeout:
-                proc.kill()
+                try:
+                    proc.kill()
+                except PermissionError:
+                    pass  # processo de outro usuário: o "timeout" do sandbox o encerra em instantes
                 append_output(f"\nTimeout apos {effective_timeout}s\n")
                 reader.join(timeout=1)
                 return False, output_text()
             time.sleep(0.2)
 
         reader.join(timeout=1)
+        if sandboxed and proc.returncode == 124:
+            append_output(f"\nTimeout apos {effective_timeout}s\n")
         return proc.returncode == 0, output_text()
     except subprocess.TimeoutExpired:
         return False, f"Timeout apos {effective_timeout}s"
@@ -817,9 +835,19 @@ def has_tests(project_dir: Path) -> bool:
 # Maven
 # ---------------------------------------------------------------------------
 
+def _sandbox_on() -> bool:
+    try:
+        return sandbox.is_active()
+    except sandbox.SandboxUnavailable:
+        return True  # run() recusa executar; aqui só escolhemos como montar o comando
+
+
 def mvn_cmd(project_dir: Path, goals: list[str]) -> list[str]:
     wrapper = project_dir / "mvnw"
     if wrapper.exists():
+        if _sandbox_on():
+            # O arquivo pertence ao sandbox; o servidor não pode dar chmod, então chama via sh.
+            return ["sh", str(wrapper), *goals]
         wrapper.chmod(wrapper.stat().st_mode | 0o111)
         return [str(wrapper), *goals]
     return ["mvn", *goals]
@@ -1075,7 +1103,7 @@ def analyze_project(entry: dict[str, Any], run_test_suite: bool = True) -> Proje
         # P5: submódulos faltando → tenta clone completo e recompila
         if is_missing_submodule_error(out):
             log.info("[%s] P5: submódulos ausentes; retentando clone completo.", name)
-            shutil.rmtree(project_dir, ignore_errors=True)
+            sandbox.remove_tree(project_dir, REPOS_DIR)
             ok_clone, clone_out = clone_with_retry(
                 repo_url,
                 project_dir,
@@ -1130,9 +1158,10 @@ def delete_repo_dir(project_dir: Path, name: str) -> None:
     if not project_dir.exists():
         return
     try:
-        shutil.rmtree(project_dir)
+        if not sandbox.remove_tree(project_dir, REPOS_DIR):
+            raise OSError("diretório continua existindo")
         log.info("[cleanup] Removido %s", name)
-    except OSError as exc:
+    except (OSError, ValueError, sandbox.SandboxUnavailable) as exc:
         log.warning("[cleanup] Falha ao remover %s: %s", project_dir, exc)
 
 
