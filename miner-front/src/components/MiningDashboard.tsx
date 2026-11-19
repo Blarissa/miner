@@ -21,7 +21,6 @@ import {
     Layers3,
     Clock,
     Hammer,
-    Lock,
 } from "lucide-react";
 import {
     cancelRepositoryRun,
@@ -39,7 +38,7 @@ import type {
     SearchRepositoriesResult,
 } from "../models/types";
 import { Button, Card, Checkbox, FieldError, FieldLabel, Modal, Select, TextInput } from "./ui";
-import { progressStageLabel, runStatusLabel } from "../models/runLabels";
+import { describeRunTiming, progressStageLabel, runStatusLabel, summarizeRejectionReasons } from "../models/runLabels";
 
 interface MiningDashboardProps {
     /** Estado do formulário mantido pelo App, para sobreviver à troca de tela. */
@@ -104,13 +103,17 @@ function canCancelMiningRun(
 }
 
 function progressFromRunStatus(runStatus: MiningRunStatus | null) {
+    // A barra mede a META (aceitos de max_repos), não os candidatos achados:
+    // o total de candidatos cresce a cada página e fazia a porcentagem recuar.
     const total = runStatus?.total_candidates || runStatus?.max_repos || 0;
     const current = runStatus?.analyzed_repositories || 0;
-    const percent = total > 0
-        ? Math.min(100, Math.round((current / total) * 100))
+    const goal = runStatus?.max_repos || 0;
+    const accepted = runStatus?.accepted_repositories || 0;
+    const percent = goal > 0
+        ? Math.min(100, Math.round((accepted / goal) * 100))
         : 0;
 
-    return { total, current, percent };
+    return { total, current, percent, goal, accepted };
 }
 
 function matchesTableFilters(
@@ -132,6 +135,24 @@ function matchesTableFilters(
     return matchesName && matchesJava && matchesBuildable && matchesPassed;
 }
 
+/** "1.8" e "8" são o mesmo Java (1.x é a notação antiga): 1.8 -> 8, 11.0.2 -> 11. */
+function canonicalJavaVersion(version?: string | null): string {
+    const text = (version ?? "").trim();
+    const oldStyle = /^1\.(\d+)/.exec(text);
+    if (oldStyle) return oldStyle[1];
+    const leading = /^(\d+)/.exec(text);
+    return leading ? leading[1] : text;
+}
+
+/** Só é upgrade quando o JDK usado é de outra versão que a declarada. */
+function isJdkUpgrade(repo: AnalyzedRepo): boolean {
+    return Boolean(
+        repo.effective_java_version &&
+        repo.java_version &&
+        canonicalJavaVersion(repo.effective_java_version) !== canonicalJavaVersion(repo.java_version),
+    );
+}
+
 function calculateMetrics(repositories: AnalyzedRepo[]) {
     const total = repositories.length;
     if (total === 0) return { compiled: 0, passed: 0, upgraded: 0 };
@@ -140,10 +161,7 @@ function calculateMetrics(repositories: AnalyzedRepo[]) {
         (acc, repo) => {
             if (repo.compiled) acc.compiled += 1;
             if (repo.tests_passed) acc.passed += 1;
-            if (
-                repo.effective_java_version &&
-                repo.effective_java_version !== repo.java_version
-            ) {
+            if (isJdkUpgrade(repo)) {
                 acc.upgraded += 1;
             }
             return acc;
@@ -177,6 +195,10 @@ export default function MiningDashboard({
 
     const [searchTerm, setSearchTerm] = useState<string>("");
     const [selectedJavaVersion, setSelectedJavaVersion] = useState<string>("ALL");
+    // O filtro local de Java só faz sentido quando a busca não fixou uma versão ("Qualquer").
+    const showJavaVersionFilter = !formData.java_version;
+    // A etiqueta "Upgraded" só vale para runs feitas com "Permitir upgrade automático do JDK".
+    const runUsedJdkUpgrade = Boolean(runStatus?.allow_jdk_upgrade);
     const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
     const isBuildOnlyMode = formData.require_buildable && !formData.require_tests_passed;
     const analyzerWillRun = formData.require_buildable || formData.require_tests_passed;
@@ -186,6 +208,12 @@ export default function MiningDashboard({
         current: progressCurrent, 
         percent: progressPercent 
     } = progressFromRunStatus(runStatus);
+    // Taxas de compilação/testes só têm sentido quando os eliminados foram salvos:
+    // sem eles a lista só tem aceitos e as taxas dão sempre 100% (efeito do filtro).
+    // Usa a opção com que a run foi feita; sem run, a caixa do formulário.
+    const showRateCards = runStatus
+        ? Boolean(runStatus.persist_eliminated_repositories)
+        : formData.persist_eliminated_repositories;
     const canResumeRun = canResumeMiningRun(runStatus, lastRunId);
     const canCancelRun = canCancelMiningRun(runStatus, lastRunId);
     const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -242,15 +270,13 @@ export default function MiningDashboard({
             .filter((index) => index >= 0);
         return {
             emptyQueryIndexes,
-            githubToken: formData.github_token.trim() === "",
             searchType: !formData.search_type,
             maxRepos: !Number.isInteger(formData.max_repos) || formData.max_repos < 1,
         };
-    }, [formData.queries, formData.github_token, formData.search_type, formData.max_repos]);
+    }, [formData.queries, formData.search_type, formData.max_repos]);
 
     const hasFormErrors =
         formErrors.emptyQueryIndexes.length > 0 ||
-        formErrors.githubToken ||
         formErrors.searchType ||
         formErrors.maxRepos;
 
@@ -260,11 +286,9 @@ export default function MiningDashboard({
         if (hasFormErrors) {
             const firstInvalidId = formErrors.emptyQueryIndexes.length > 0
                 ? `field-query-${formErrors.emptyQueryIndexes[0]}`
-                : formErrors.githubToken
-                    ? "field-github-token"
-                    : formErrors.searchType
-                        ? "field-search-type"
-                        : "field-max-repos";
+                : formErrors.searchType
+                    ? "field-search-type"
+                    : "field-max-repos";
             document.getElementById(firstInvalidId)?.focus();
             return;
         }
@@ -404,9 +428,9 @@ export default function MiningDashboard({
 
     const filteredRepositories = useMemo(() => {
         return repositories.filter((repo) =>
-            matchesTableFilters(repo, searchTerm, selectedJavaVersion, formData)
+            matchesTableFilters(repo, searchTerm, showJavaVersionFilter ? selectedJavaVersion : "ALL", formData)
         );
-    }, [repositories, searchTerm, selectedJavaVersion, formData]);
+    }, [repositories, searchTerm, selectedJavaVersion, showJavaVersionFilter, formData]);
 
     const metrics = useMemo(() => {
         return calculateMetrics(repositories);
@@ -450,8 +474,8 @@ export default function MiningDashboard({
                 {/* Formulário de Busca */}
                 <section className="bg-slate-800/80 border border-slate-700/60 rounded-xl p-6 shadow-md">
                     <form onSubmit={handleSearch} noValidate className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div className="md:col-span-2">
+                        <div className="grid grid-cols-1 gap-4">
+                            <div>
                                 <div className="flex items-center justify-between gap-3 mb-1.5">
                                     <FieldLabel htmlFor="field-query-0" required className="">
                                         Queries de Busca no GitHub
@@ -503,34 +527,6 @@ export default function MiningDashboard({
                                         Preencha a query destacada ou remova-a.
                                     </FieldError>
                                 )}
-                            </div>
-
-                            <div>
-                                <FieldLabel htmlFor="field-github-token" required>
-                                    GitHub Token
-                                </FieldLabel>
-                                <TextInput
-                                    id="field-github-token"
-                                    type="password"
-                                    value={formData.github_token}
-                                    onChange={(e) => setFormData({ ...formData, github_token: e.target.value })}
-                                    placeholder="ghp_..."
-                                    className="transition"
-                                    aria-required="true"
-                                    invalid={showValidation && formErrors.githubToken}
-                                    aria-describedby={
-                                        showValidation && formErrors.githubToken
-                                            ? "field-github-token-error field-github-token-hint"
-                                            : "field-github-token-hint"
-                                    }
-                                />
-                                {showValidation && formErrors.githubToken && (
-                                    <FieldError id="field-github-token-error">Informe o token do GitHub.</FieldError>
-                                )}
-                                <p id="field-github-token-hint" className="mt-1.5 flex items-start gap-1.5 text-xs text-slate-400">
-                                    <Lock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                                    <span>Usado só durante a execução. Não é salvo no banco de dados.</span>
-                                </p>
                             </div>
                         </div>
 
@@ -1136,7 +1132,7 @@ export default function MiningDashboard({
                             )}
                             {loading && runStatus && (
                                 <span className="text-slate-400">
-                                    {progressCurrent}/{progressTotal || "?"} repositórios analisados ({progressPercent}%)
+                                    {runStatus.accepted_repositories} de {runStatus.max_repos} aceitos · {progressCurrent} analisados
                                 </span>
                             )}
                         </div>
@@ -1179,8 +1175,8 @@ export default function MiningDashboard({
                             <span className="font-semibold text-slate-100">
                                 Run #{runStatus.id} {runStatus.status === "completed" ? "carregada" : "em andamento"}
                             </span>
-                            <span>
-                                {progressCurrent}/{progressTotal || "?"} processados · {runStatus.accepted_repositories} aceitos · {runStatus.eliminated_repositories} eliminados
+                            <span className="text-sm font-semibold text-cyan-300">
+                                {runStatus.accepted_repositories} de {runStatus.max_repos} aceitos
                             </span>
                         </div>
                         <div className="mt-3 h-2 rounded-full bg-slate-900 overflow-hidden">
@@ -1189,6 +1185,20 @@ export default function MiningDashboard({
                                 style={{ width: `${progressPercent}%` }}
                             />
                         </div>
+                        <p className="mt-3 text-xs text-slate-400">
+                            {progressCurrent} candidatos analisados · {runStatus.eliminated_repositories} eliminados
+                            {progressTotal > progressCurrent ? ` · ${progressTotal - progressCurrent} ainda na fila` : ""}
+                        </p>
+                        {summarizeRejectionReasons(runStatus.rejection_reasons) && (
+                            <p className="mt-1 text-xs text-slate-400">
+                                Eliminados: {summarizeRejectionReasons(runStatus.rejection_reasons)}
+                            </p>
+                        )}
+                        {describeRunTiming(runStatus) && (
+                            <p className="mt-1 text-xs text-slate-500">
+                                {describeRunTiming(runStatus)}
+                            </p>
+                        )}
                     </div>
                 )}
 
@@ -1202,7 +1212,7 @@ export default function MiningDashboard({
                                 </span>
                             )}
                             <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-                                Total da resposta: {lastTotal}
+                                Na lista: {lastTotal}
                             </span>
                             {runStatus && (
                                 <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
@@ -1211,19 +1221,15 @@ export default function MiningDashboard({
                                 </span>
                             )}
                             <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-                                {lastRunIncludedTests ? "Testes analisados" : "Testes ignorados"}
+                                {lastRunIncludedTests || Boolean(runStatus?.require_tests_passed) ? "Testes analisados" : "Testes ignorados"}
                             </span>
                             {runStatus && (
                                 <>
-                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-                                        Página {runStatus.page_cursor ?? 1} / índice {runStatus.last_processed_index ?? 0}
-                                    </span>
-                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-                                        Lote {runStatus.batch_size ?? "-"}
-                                    </span>
-                                    <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
-                                        Aceitação {Math.round((runStatus.acceptance_rate ?? 0) * 100)}%
-                                    </span>
+                                    {runStatus.processed_repositories > 0 && (
+                                        <span className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-2">
+                                            Taxa de aceitação: {Math.round((runStatus.accepted_repositories / runStatus.processed_repositories) * 100)}% ({runStatus.accepted_repositories} de {runStatus.processed_repositories})
+                                        </span>
+                                    )}
                                     {runStatus && !canResumeRun && Boolean(runStatus.exhausted) && (
                                         <span className="inline-flex w-full items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-semibold leading-5 text-amber-200">
                                             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
@@ -1269,12 +1275,8 @@ export default function MiningDashboard({
                 )}
 
                 {/* Métricas Resumidas */}
-                {repositories.length > 0 && (
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-                        <Card padding="sm" className="shadow-sm">
-                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Total Encontrado</span>
-                            <p className="text-2xl font-bold text-neutral-100 mt-1">{repositories.length}</p>
-                        </Card>
+                {repositories.length > 0 && showRateCards && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <Card padding="sm" className="shadow-sm">
                             <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Taxa de Compilação</span>
                             <p className="text-2xl font-bold text-success-400 mt-1">{metrics.compiled}%</p>
@@ -1282,13 +1284,6 @@ export default function MiningDashboard({
                         <Card padding="sm" className="shadow-sm">
                             <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Testes com Sucesso</span>
                             <p className="text-2xl font-bold text-primary-400 mt-1">{metrics.passed}%</p>
-                        </Card>
-                        <Card padding="sm" className="shadow-sm">
-                            <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wide">Upgrades de JDK</span>
-                            <p className="text-2xl font-bold text-warning-400 mt-1">{metrics.upgraded}</p>
-                            <p className="text-xs text-neutral-400 mt-1">
-                                JDK efetivo diferente da versão declarada
-                            </p>
                         </Card>
                     </div>
                 )}
@@ -1309,41 +1304,21 @@ export default function MiningDashboard({
                         </div>
 
                         <div className="flex items-center gap-4 text-xs font-medium">
-                            <div className="flex items-center gap-2">
-                                <span className="text-slate-400" id="local-java-filter-label">Java:</span>
-                                <Select
-                                    aria-labelledby="local-java-filter-label"
-                                    value={selectedJavaVersion}
-                                    onChange={(e) => setSelectedJavaVersion(e.target.value)}
-                                >
-                                    <option value="ALL">Todas</option>
-                                    {javaVersionOptions.map((version) => (
-                                        <option key={version} value={version}>Java {version}</option>
-                                    ))}
-                                </Select>
-                            </div>
-
-                            <Checkbox
-                                label="Buildáveis"
-                                checked={formData.require_buildable}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        require_buildable: e.target.checked,
-                                    })
-                                }
-                            />
-
-                            <Checkbox
-                                label="Testes OK"
-                                checked={formData.require_tests_passed}
-                                onChange={(e) =>
-                                    setFormData({
-                                        ...formData,
-                                        require_tests_passed: e.target.checked,
-                                    })
-                                }
-                            />
+                            {showJavaVersionFilter && (
+                                <div className="flex items-center gap-2">
+                                    <span className="text-slate-400" id="local-java-filter-label">Java:</span>
+                                    <Select
+                                        aria-labelledby="local-java-filter-label"
+                                        value={selectedJavaVersion}
+                                        onChange={(e) => setSelectedJavaVersion(e.target.value)}
+                                    >
+                                        <option value="ALL">Todas</option>
+                                        {javaVersionOptions.map((version) => (
+                                            <option key={version} value={version}>Java {version}</option>
+                                        ))}
+                                    </Select>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -1391,9 +1366,7 @@ export default function MiningDashboard({
                                                     <span className="bg-slate-900 border border-slate-700 text-slate-300 px-2 py-0.5 rounded font-mono">
                                                         JDK {repo.effective_java_version || repo.java_version || "?"}
                                                     </span>
-                                                    {repo.effective_java_version &&
-                                                        repo.java_version &&
-                                                        repo.effective_java_version !== repo.java_version && (
+                                                    {runUsedJdkUpgrade && isJdkUpgrade(repo) && (
                                                             <span
                                                                 className="text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-1.5 py-0.2 rounded"
                                                                 title={`Declarado: Java ${repo.java_version}`}

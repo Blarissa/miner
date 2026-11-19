@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from typing import Any, Literal
 
@@ -49,8 +50,19 @@ def repo_effective_java_version(repo: dict[str, Any], meta: dict[str, Any] | Non
     return str(repo.get("effective_java_version") or declared or "unknown")
 
 
+def canonical_java_version(version: Any) -> str:
+    """'1.8' e '8' sao o mesmo Java: 1.8 -> 8, 11.0.2 -> 11, 17 -> 17."""
+    text = str(version or "").strip()
+    old_style = re.match(r"^1\.(\d+)", text)
+    if old_style:
+        return old_style.group(1)
+    leading = re.match(r"^(\d+)", text)
+    return leading.group(1) if leading else text
+
+
 def java_version_comparison_label(declared: str, effective: str) -> str:
-    return "Mesma versao" if declared == effective else "Versao ajustada"
+    same = canonical_java_version(declared) == canonical_java_version(effective)
+    return "Mesma versao" if same else "Versao ajustada"
 
 
 def repo_build(repo: dict[str, Any], meta: dict[str, Any] | None = None) -> str:

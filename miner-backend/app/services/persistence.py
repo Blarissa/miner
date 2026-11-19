@@ -543,6 +543,28 @@ def get_search_filters_for_run(run_id: int) -> list[GitHubSearchFilterRequest]:
     return filters
 
 
+def get_mining_run_rejection_counts(run_id: int) -> dict[str, int]:
+    """Conta os candidatos eliminados da run por etapa (motivo), sem expor erros longos.
+
+    Serve para a tela explicar por que ainda nao ha aceitos. Candidatos
+    cortados so porque o limite de repositorios ja tinha sido atingido
+    (`max_repos_reached`) nao sao eliminacoes de verdade e ficam de fora.
+    """
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT COALESCE(rejection_stage, 'unknown') AS stage, COUNT(*) AS total
+            FROM mining_run_candidates
+            WHERE mining_run_id = ?
+              AND status = 'rejected'
+              AND COALESCE(rejection_stage, '') != 'max_repos_reached'
+            GROUP BY COALESCE(rejection_stage, 'unknown')
+            """,
+            (run_id,),
+        ).fetchall()
+    return {str(row["stage"]): int(row["total"]) for row in rows}
+
+
 def get_processed_candidate_keys(run_id: int) -> set[str]:
      
     with get_connection() as conn:

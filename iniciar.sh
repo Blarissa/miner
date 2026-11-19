@@ -46,9 +46,35 @@ if ! docker pull "${IMAGEM}" && ! docker image inspect "${IMAGEM}" >/dev/null 2>
   fi
 fi
 
+# Token do GitHub: cada pessoa usa o próprio (grátis, sem permissões especiais).
+# Ordem: variável de ambiente GITHUB_TOKEN, depois o arquivo guardado, senão pergunta uma única vez.
+ARQ_TOKEN="${HOME}/.miner/github_token"
+if [ -z "${GITHUB_TOKEN:-}" ] && [ -f "${ARQ_TOKEN}" ]; then
+  GITHUB_TOKEN="$(head -n 1 "${ARQ_TOKEN}" | tr -d '[:space:]')"
+fi
+if [ -z "${GITHUB_TOKEN:-}" ]; then
+  echo
+  echo "O Miner precisa de um token do GitHub para buscar repositórios. Ele é gratuito."
+  echo "Crie em https://github.com/settings/tokens, escolha \"Generate new token\", classic,"
+  echo "e NÃO marque nenhuma permissão. Depois cole o token abaixo (ele não aparece enquanto você cola)."
+  echo "O token fica guardado só neste computador, em ${ARQ_TOKEN}"
+  read -r -s -p "Cole o token e pressione Enter: " GITHUB_TOKEN || true
+  echo
+  GITHUB_TOKEN="$(printf '%s' "${GITHUB_TOKEN:-}" | tr -d '[:space:]')"
+  if [ -z "${GITHUB_TOKEN}" ]; then
+    echo "Nenhum token informado. Execute de novo quando tiver o token." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "${ARQ_TOKEN}")"
+  ( umask 077; printf '%s\n' "${GITHUB_TOKEN}" > "${ARQ_TOKEN}" )
+  echo "Token guardado. Para trocar de token, apague o arquivo ${ARQ_TOKEN}"
+fi
+export GITHUB_TOKEN
+
 docker rm -f "${CONTAINER}" >/dev/null 2>&1 || true
 echo "Iniciando o Miner..."
-docker run -d --rm --name "${CONTAINER}" -p "${PORTA}:10000" -v miner-data:/app/data "${IMAGEM}" >/dev/null \
+# O token vai pelo ambiente (-e sem valor), nunca na linha de comando.
+docker run -d --rm --name "${CONTAINER}" -p "${PORTA}:10000" -e GITHUB_TOKEN -v miner-data:/app/data "${IMAGEM}" >/dev/null \
   || { echo "Não foi possível iniciar. Se a porta ${PORTA} estiver em uso, feche o programa que a usa." >&2; exit 1; }
 
 echo "Aguardando o servidor..."

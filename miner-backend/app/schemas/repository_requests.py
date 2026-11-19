@@ -103,7 +103,6 @@ class RepositoryFilterRequest(BaseModel):
 
 
 class SearchRepositoriesRequest(BaseModel):
-    github_token: str | None = None
     max_repos: int = Field(default=100, ge=1, le=5000)
     max_workers: int = Field(default=5, ge=1, le=20)
     analyzer_workers: int = Field(default=4, ge=1, le=8)

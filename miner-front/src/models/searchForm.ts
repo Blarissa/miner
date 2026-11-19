@@ -17,7 +17,6 @@ export const INITIAL_SEARCH_FORM_DATA: SearchFormData = {
     persist_eliminated_repositories: false,
     include_statistics: true,
     statistics_scope: "accepted",
-    github_token: "",
     language: "Java",
     java_version: "",
     stars: "",

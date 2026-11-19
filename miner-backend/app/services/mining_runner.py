@@ -335,7 +335,6 @@ def analyzed_candidate_record(
 
 def payload_from_saved_run(run: dict[str, Any], filters: list[Any]) -> SearchRepositoriesRequest:
     return SearchRepositoriesRequest(
-        github_token=None,
         max_repos=int(run["max_repos"]),
         max_workers=int(run["max_workers"]),
         analyzer_workers=int(run["analyzer_workers"]),

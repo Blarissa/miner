@@ -144,6 +144,8 @@ export interface MiningRunStatus {
     started_at: string;
     finished_at?: string | null;
     error_message?: string | null;
+    /** Eliminados até agora por etapa (compile, tests, jdk_resolution...). */
+    rejection_reasons?: Record<string, number>;
 }
 
 export interface SearchRepositoriesResult {
@@ -176,7 +178,6 @@ export interface SearchFormData {
     persist_eliminated_repositories: boolean;
     include_statistics: boolean;
     statistics_scope: StatisticsScope;
-    github_token: string;
     language: string;
     java_version: "" | "6" | "7" | "8" | "9" | "10" | "11" | "12" | "13" | "14" | "15" | "16" | "17" | "18" | "19" | "20" | "21" | "22" | "23" | "24" | "25" | "26";
     stars: string;

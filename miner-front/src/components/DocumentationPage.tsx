@@ -110,11 +110,13 @@ const FIELDS: FieldDoc[] = [
         description: (
             <>
                 Token de acesso pessoal do GitHub (<Code>ghp_…</Code> ou{" "}
-                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. É obrigatório no
-                formulário. O token é usado apenas durante a execução da busca:{" "}
-                <strong>ele não é gravado no banco de dados</strong> e não aparece nos resultados nem no
-                histórico das execuções. (Chamando a API diretamente, se o token for omitido o backend usa o
-                token configurado no servidor.)
+                <Code>github_pat_…</Code>) usado para autenticar as chamadas à API. Ele{" "}
+                <strong>não é digitado na tela</strong>: o backend lê a variável de ambiente{" "}
+                <Code>GITHUB_TOKEN</Code> do computador (no Windows, <Code>setx GITHUB_TOKEN "seu_token"</Code>;
+                no Linux e macOS, <Code>export GITHUB_TOKEN=seu_token</Code>). O token{" "}
+                <strong>não é gravado no banco de dados</strong> e não aparece nos resultados nem no
+                histórico das execuções. Sem a variável, a busca é recusada com uma mensagem explicando
+                como configurar.
             </>
         ),
         tip: (
@@ -521,7 +523,7 @@ const OPTIONS: OptionDoc[] = [
     {
         label: "Salvar repositórios eliminados",
         description:
-            "Por padrão só os aceitos são gravados no banco e mostrados na tabela. Marcando esta opção, os eliminados também são salvos (com o estágio e o log do erro), aparecem na tabela e podem entrar nas estatísticas.",
+            "Por padrão só os aceitos são gravados no banco e mostrados na tabela. Marcando esta opção, os eliminados também são salvos (com o estágio e o log do erro), aparecem na tabela e podem entrar nas estatísticas. É ela que faz aparecerem, acima da tabela, os cartões Taxa de Compilação e Testes com Sucesso: sem os eliminados essas taxas dariam sempre 100%, efeito do filtro e não do ecossistema.",
     },
     {
         label: "Permitir upgrade automático do JDK",
@@ -531,7 +533,9 @@ const OPTIONS: OptionDoc[] = [
                 usa exatamente o JDK da versão declarada; se o Maven ou o <Code>pom.xml</Code>{" "}
                 exigir uma versão maior, o repositório é eliminado (<Code>jdk_resolution</Code>).
                 Marcada, o backend escolhe o menor JDK disponível que atenda à exigência. A tabela
-                mostra o JDK efetivo e o selo <Badge tone="amber">Upgraded</Badge>.
+                mostra o JDK efetivo e, só nas execuções feitas com esta opção marcada, o selo{" "}
+                <Badge tone="amber">Upgraded</Badge> quando o JDK usado é de outra versão que a declarada
+                (<Code>1.8</Code> e <Code>8</Code> contam como a mesma versão).
             </>
         ),
     },
@@ -879,7 +883,7 @@ export default function DocumentationPage() {
                         <p className="font-semibold text-slate-100">Sua primeira busca, em 4 passos:</p>
                         <ol className="list-decimal space-y-1 pl-5">
                             <li>No Início, clique em <strong>Nova busca</strong>.</li>
-                            <li>Mantenha a query <Code>mockito</Code> e o tipo <strong>Code Search</strong>; informe seu token do GitHub.</li>
+                            <li>Mantenha a query <Code>mockito</Code> e o tipo <strong>Code Search</strong>; confira se o <Code>GITHUB_TOKEN</Code> está definido nas variáveis de ambiente do computador.</li>
                             <li>Deixe o limite em 5 ou 10 repositórios para um teste rápido.</li>
                             <li>Clique em <strong>Iniciar Mineração</strong> e acompanhe a tabela sendo preenchida.</li>
                         </ol>
@@ -980,7 +984,7 @@ export default function DocumentationPage() {
                                 },
                                 {
                                     key: <Badge>Plataforma (os dois tipos)</Badge>,
-                                    value: "Versão Java, token, limite de repositórios e opções de execução são da plataforma e valem para os dois tipos.",
+                                    value: "Versão Java, limite de repositórios e opções de execução são da plataforma e valem para os dois tipos.",
                                 },
                             ]}
                         />
@@ -1162,18 +1166,35 @@ export default function DocumentationPage() {
                             head={["Item", "Descrição"]}
                             rows={[
                                 { key: <Badge>Run #N</Badge>, value: "Identificador da execução. Use-o na tela Início para reabrir." },
-                                { key: "Barra de progresso", value: "Candidatos analisados / total de candidatos, com aceitos e eliminados." },
-                                { key: "Total da resposta", value: "Quantidade de repositórios devolvidos pela execução." },
+                                { key: "X de N aceitos e barra de progresso", value: "A meta da execução: quantos repositórios já foram aceitos do limite pedido. A barra enche conforme os aceitos, não conforme os candidatos encontrados (esse total cresce a cada página do GitHub)." },
+                                { key: "Candidatos analisados", value: "Quantos candidatos já passaram pela análise, quantos foram eliminados e quantos ainda estão na fila." },
+                                { key: "Eliminados", value: "Resumo por motivo (por exemplo, “8 não compilam · 5 com testes falhando”). Explica por que ainda não há aceitos. Os motivos possíveis estão na tabela abaixo." },
+                                { key: "Tempo", value: "Depois de 3 repositórios mostra a média por repositório. Com ao menos um aceito, acrescenta quanto falta para a meta, marcado como estimativa; sem aceitos não há como estimar." },
+                                { key: "Na lista", value: "Quantidade de repositórios devolvidos pela execução." },
                                 { key: "Testes analisados / ignorados", value: "Indica se essa execução rodou os testes." },
-                                { key: "Página / índice", value: "Em qual página do GitHub e em qual item a busca parou." },
-                                { key: "Lote", value: "Quantos candidatos são analisados por vez." },
-                                { key: "Aceitação", value: "Percentual de candidatos aceitos até agora." },
+                                { key: "Taxa de aceitação", value: "Percentual real de candidatos aceitos até agora (aceitos ÷ analisados), mostrado só depois que há repositórios analisados." },
                                 { key: <strong>Cancelar</strong>, value: "Interrompe uma execução que está na fila ou em execução. O que já foi aceito fica salvo." },
                                 {
                                     key: <strong>Retomar consulta</strong>,
-                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos. Como o token digitado não é guardado, a retomada usa o token configurado no servidor (GITHUB_TOKEN no backend); se ele não estiver configurado, a retomada é recusada.",
+                                    value: "Aparece quando a execução foi cancelada ou falhou antes de atingir o limite. Continua exatamente de onde parou, sem repetir candidatos. A retomada usa o token configurado no servidor (GITHUB_TOKEN no backend); se ele não estiver configurado, é recusada.",
                                 },
                                 { key: <strong>Ver estatísticas</strong>, value: "Abre a tela Estatísticas (habilitado quando há estatísticas)." },
+                            ]}
+                        />
+                        <p className="font-semibold text-slate-100">Motivos de eliminação</p>
+                        <DefinitionTable
+                            head={["Motivo", "Significado"]}
+                            rows={[
+                                { key: "não compilam", value: "O Maven falhou ao compilar o projeto." },
+                                { key: "com testes falhando", value: "Compilou, mas os testes falharam." },
+                                { key: "com testes que exigem infraestrutura", value: "Os testes falharam por precisarem de navegador, driver ou serviços externos (Selenium, Appium e similares)." },
+                                { key: "sem testes", value: "Nenhum teste foi detectado em src/test/java." },
+                                { key: "exigem outra versão do Java", value: "O pom.xml exige um JDK maior que o selecionado e o upgrade automático está desmarcado (ou não há JDK disponível)." },
+                                { key: "falharam ao clonar", value: "Não foi possível baixar o repositório." },
+                                { key: "sem pom.xml na raiz", value: "O analisador só aceita projetos Maven com pom.xml na raiz." },
+                                { key: "fora das regras de conteúdo", value: "O arquivo encontrado não atendeu às regras de conteúdo da busca." },
+                                { key: "com versão de Java fora do filtro", value: "A versão de Java do projeto não é a escolhida em “Versão Java”." },
+                                { key: "com erro inesperado", value: "Falha interna durante a análise." },
                             ]}
                         />
                         <Callout tone="warning" title="Quando não dá para retomar">
@@ -1186,9 +1207,11 @@ export default function DocumentationPage() {
                     {/* ------------------------------------------------ Resultados */}
                     <Section id="resultados" title="Tabela de resultados" icon={<Table2 className="h-5 w-5 text-cyan-400" />}>
                         <p>
-                            Acima da tabela há quatro indicadores rápidos: <strong>Total Encontrado</strong>,{" "}
-                            <strong>Taxa de Compilação</strong>, <strong>Testes com Sucesso</strong> e{" "}
-                            <strong>Upgrades de JDK</strong> (quantos usaram um JDK diferente do declarado).
+                            Quando a execução foi feita com <strong>Salvar repositórios eliminados</strong>{" "}
+                            marcado, aparecem acima da tabela dois indicadores:{" "}
+                            <strong>Taxa de Compilação</strong> e <strong>Testes com Sucesso</strong>.
+                            Sem os eliminados salvos eles ficam ocultos, porque a lista só tem aceitos e as
+                            taxas seriam sempre 100%.
                         </p>
                         <DefinitionTable
                             head={["Coluna", "O que mostra"]}
@@ -1199,8 +1222,9 @@ export default function DocumentationPage() {
                                     value: (
                                         <>
                                             JDK efetivamente usado. O selo <Badge tone="amber">Upgraded</Badge>{" "}
-                                            indica que foi preciso um JDK maior que o declarado (passe o mouse para
-                                            ver a versão declarada).
+                                            só aparece em execuções feitas com “Permitir upgrade automático do JDK” e
+                                            indica que foi preciso um JDK de outra versão que a declarada (passe o
+                                            mouse para ver a versão declarada).
                                         </>
                                     ),
                                 },
@@ -1222,14 +1246,10 @@ export default function DocumentationPage() {
                         <h3 className="pt-2 text-base font-semibold text-slate-100">Filtros da tabela</h3>
                         <p>
                             A barra acima da tabela filtra apenas o que já foi carregado, sem nova chamada ao
-                            GitHub: por <strong>nome</strong>, por <strong>versão Java</strong> e pelas
-                            caixas <strong>Buildáveis</strong> e <strong>Testes OK</strong>.
+                            GitHub: por <strong>nome</strong> e por <strong>versão Java</strong>. O filtro de
+                            versão Java só aparece quando o campo “Versão Java” do formulário está em{" "}
+                            <em>Qualquer</em>; com uma versão escolhida, todos os resultados já são dela.
                         </p>
-                        <Callout tone="warning">
-                            As caixas <strong>Buildáveis</strong> e <strong>Testes OK</strong> da tabela são
-                            as mesmas opções do formulário. Alterá-las também muda o que será usado na
-                            próxima mineração.
-                        </Callout>
                         <h3 className="pt-2 text-base font-semibold text-slate-100">Modal de detalhes</h3>
                         <ul className="list-disc space-y-1 pl-5">
                             <li><strong>Tempo de compilação</strong> e <strong>tempo de testagem</strong>.</li>

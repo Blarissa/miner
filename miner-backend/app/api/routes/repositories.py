@@ -18,6 +18,7 @@ from app.services.persistence import (
     cancel_mining_run,
     create_mining_run,
     get_mining_run,
+    get_mining_run_rejection_counts,
     get_run_repositories,
     get_run_statistics,
     get_search_filters_for_run,
@@ -92,15 +93,24 @@ def matches_repository_filters(repo: dict[str, Any], filters: dict[str, Any]) ->
 def run_status_response(run: dict[str, Any]) -> dict[str, Any]:
     response = dict(run)
     response["analyzed_repositories"] = response.get("processed_repositories", 0)
+    # Motivos das eliminacoes ate agora (etapa -> quantidade), para a tela explicar o funil.
+    run_id = response.get("id")
+    response["rejection_reasons"] = get_mining_run_rejection_counts(int(run_id)) if run_id is not None else {}
     return response
 
 
 @router.post("/search", status_code=status.HTTP_202_ACCEPTED)
 def search_repositories(payload: SearchRepositoriesRequest, background_tasks: BackgroundTasks) -> dict[str, Any]:
     payload_data = payload.model_dump()
-    token = payload.github_token or settings.github_token
+    token = settings.github_token
     if not token:
-        raise HTTPException(status_code=400, detail="GitHub token nao informado.")
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "GITHUB_TOKEN nao configurado. Defina a variavel de ambiente GITHUB_TOKEN no "
+                "computador (Windows: setx GITHUB_TOKEN \"seu_token\") e reinicie o programa."
+            ),
+        )
 
     filters = filters_from_payload(payload_data)
     if not filters:

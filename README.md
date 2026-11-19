@@ -50,7 +50,7 @@ Detalhes:
 - A imagem fica publicada no Docker Hub: [`blarissa/miner`](https://hub.docker.com/r/blarissa/miner). Você não precisa de conta nem de login para baixá-la. Cada vez que o script abre, ele verifica se há versão nova.
 - Se você clonou o repositório e estiver sem internet, o script constrói a imagem a partir dos arquivos locais (leva uns 20 minutos).
 - Se fechar a janela sem apertar uma tecla, o Miner continua rodando; encerre com `docker stop miner-backend-run` (ou com o `parar.bat`, se você clonou o repositório).
-- Você precisa de um token do GitHub (campo no formulário) para buscas por código.
+- Você precisa de um token do GitHub para buscas por código. Ele não é digitado na tela. Pelo `iniciar.bat` / `iniciar.sh`, o launcher pede o token **uma vez** na primeira execução e o guarda só no seu computador (`%USERPROFILE%\.miner\github_token` no Windows, `~/.miner/github_token` no Linux e macOS); para trocar, apague esse arquivo. Rodando o backend por conta própria, defina a variável de ambiente `GITHUB_TOKEN` no computador (Windows: `setx GITHUB_TOKEN "seu_token"` no PowerShell e abra o programa de novo; Linux e macOS: `export GITHUB_TOKEN=seu_token`). O token é gratuito: crie em https://github.com/settings/tokens, sem marcar nenhuma permissão.
 - A API tem documentação em <http://localhost:8000/api/docs> e a documentação do projeto em <http://localhost:8000/docs>.
 
 ## Estrutura Do Repositório
@@ -153,7 +153,7 @@ O primeiro build leva cerca de 20 minutos por causa dos 21 JDKs. Abra <http://lo
 1. Suba o Miner (`iniciar.bat`) e abra <http://localhost:8000>.
 2. Clique em `Nova busca`.
 3. Informe uma ou mais queries do GitHub.
-4. Informe o token do GitHub no formulário quando a busca exigir autenticação.
+4. Confirme que a variável de ambiente `GITHUB_TOKEN` está definida no computador (veja acima); sem ela a busca é recusada com uma mensagem explicando como configurar.
 5. Configure filtros e opções de análise.
 6. Inicie a mineração.
 7. Acompanhe o progresso, os resultados parciais e as estatísticas.

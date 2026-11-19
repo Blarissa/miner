@@ -260,7 +260,6 @@ function buildSearchPayload(formData: SearchFormData) {
     }));
 
     return {
-        github_token: formData.github_token.trim() || undefined,
         max_repos: Number(formData.max_repos),
         max_workers: 4,
         analyzer_workers: 4,
